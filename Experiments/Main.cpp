@@ -1,5 +1,6 @@
 #include "Precomp.h"
 #include "Debug.h"
+#include "Renderer.h"
 
 // Constants
 static const wchar_t ClassName[] = L"Experiments Test Application";
@@ -9,7 +10,7 @@ static const float Fov = XMConvertToRadians(90.f);
 static const float NearClip = 0.5f;
 static const float FarClip = 100.f;
 static const float CameraMoveSpeed = 0.125f;
-static bool VSyncEnabled = true;
+static const bool VSyncEnabled = true;
 
 // Application variables
 static HINSTANCE Instance;
@@ -21,6 +22,7 @@ static void Shutdown();
 static LRESULT CALLBACK WndProc(HWND, UINT, WPARAM, LPARAM);
 
 // Entry point
+_Use_decl_annotations_
 int WINAPI WinMain(HINSTANCE instance, HINSTANCE, LPSTR, int)
 {
     Instance = instance;
@@ -30,15 +32,21 @@ int WINAPI WinMain(HINSTANCE instance, HINSTANCE, LPSTR, int)
         return -1;
     }
 
-    // TODO: Initialize graphics here
+    // Initialize graphics
+    std::unique_ptr<Renderer> renderer = Renderer::Create(Window);
+    if (!renderer)
+    {
+        assert(false);
+        return -2;
+    }
 
     ShowWindow(Window, SW_SHOW);
     UpdateWindow(Window);
 
     // Timing info
-    LARGE_INTEGER lastTime = {};
-    LARGE_INTEGER currTime = {};
-    LARGE_INTEGER frequency = {};
+    LARGE_INTEGER lastTime {};
+    LARGE_INTEGER currTime {};
+    LARGE_INTEGER frequency {};
     QueryPerformanceFrequency(&frequency);
 
     // TODO: Replace with something better as needed
@@ -58,7 +66,7 @@ int WINAPI WinMain(HINSTANCE instance, HINSTANCE, LPSTR, int)
     wchar_t caption[200] = {};
 
     // Main loop
-    MSG msg = {};
+    MSG msg {};
     while (msg.message != WM_QUIT)
     {
         if (PeekMessage(&msg, nullptr, 0, 0, PM_REMOVE))
@@ -79,15 +87,6 @@ int WINAPI WinMain(HINSTANCE instance, HINSTANCE, LPSTR, int)
             // Compute time step from last frame until now
             double timeStep = (double)(currTime.QuadPart - lastTime.QuadPart) / (double)frequency.QuadPart;
 
-            // TODO: Artificial throttling to ~60fps until we put in rendering. Keeps
-            // DWM from going crazy from all the SetWindowText calls
-            if (timeStep < 0.01666)
-            {
-                // Not an accurate sleep, but good enough for artificial throttling
-                ::Sleep((int)(16 - timeStep * 1000));
-                continue;
-            }
-
             // Compute fps
             float frameRate = 1.0f / (float)timeStep;
             lastTime = currTime;
@@ -101,18 +100,21 @@ int WINAPI WinMain(HINSTANCE instance, HINSTANCE, LPSTR, int)
 
             // TODO: Render something!
 
-            swprintf_s(caption, L"%s (%dx%d)- FPS: %3.2f", ClassName, ScreenWidth, ScreenHeight, frameRate);
+            renderer->Render(VSyncEnabled);
+
+            swprintf_s(caption, L"%s (%dx%d) - FPS: %3.2f", ClassName, ScreenWidth, ScreenHeight, frameRate);
             SetWindowText(Window, caption);
         }
     }
 
+    renderer.reset();
     Shutdown();
     return 0;
 }
 
 bool Initialize()
 {
-    WNDCLASSEX wcx = {};
+    WNDCLASSEX wcx {};
     wcx.cbSize = sizeof(wcx);
     wcx.hbrBackground = static_cast<HBRUSH>(GetStockObject(BLACK_BRUSH));
     wcx.hInstance = Instance;
@@ -125,9 +127,9 @@ bool Initialize()
         return false;
     }
 
-    DWORD style = WS_OVERLAPPEDWINDOW & ~(WS_THICKFRAME | WS_MAXIMIZEBOX);
+    DWORD style { WS_OVERLAPPEDWINDOW & ~(WS_THICKFRAME | WS_MAXIMIZEBOX) };
 
-    RECT rc = {};
+    RECT rc {};
     rc.right = ScreenWidth;
     rc.bottom = ScreenHeight;
     AdjustWindowRect(&rc, style, FALSE);
