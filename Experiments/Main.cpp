@@ -1,6 +1,7 @@
 #include "Precomp.h"
 #include "Debug.h"
 #include "Renderer.h"
+#include "TestRenderer.h"
 #include "ObjModel.h"
 
 // Constants
@@ -9,8 +10,9 @@ static const uint32_t ScreenWidth = 1280;
 static const uint32_t ScreenHeight = 720;
 static const float Fov = XMConvertToRadians(90.f);
 static const float NearClip = 0.5f;
-static const float FarClip = 100.f;
-static const float CameraMoveSpeed = 0.125f;
+static const float FarClip = 10000.f;
+static const float CameraMoveSpeed = 25.f;
+static const float CameraTurnSpeed = 0.0125f;
 static const bool VSyncEnabled = true;
 
 // Application variables
@@ -33,25 +35,31 @@ int WINAPI WinMain(HINSTANCE instance, HINSTANCE, LPSTR, int)
         return -1;
     }
 
-    //std::unique_ptr<ObjModel> objModel(new ObjModel);
-    //if (!objModel)
-    //{
-    //    assert(false);
-    //    return -2;
-    //}
+    std::unique_ptr<ObjModel> objModel(new ObjModel);
+    if (!objModel)
+    {
+        assert(false);
+        return -2;
+    }
 
-    //if (!objModel->Load(L"../Assets/crytek-sponza/sponza.obj"))
-    //{
-    //    assert(false);
-    //    return -3;
-    //}
+    if (!objModel->Load(L"../Assets/crytek-sponza/sponza.obj"))
+    {
+        assert(false);
+        return -3;
+    }
 
     // Initialize graphics
-    std::unique_ptr<Renderer> renderer(Renderer::Create(Window));
+    std::unique_ptr<TestRenderer> renderer(TestRenderer::Create(Window));
     if (!renderer)
     {
         assert(false);
         return -4;
+    }
+
+    if (!renderer->AddMeshes(objModel))
+    {
+        assert(false);
+        return -5;
     }
 
     ShowWindow(Window, SW_SHOW);
@@ -66,10 +74,12 @@ int WINAPI WinMain(HINSTANCE instance, HINSTANCE, LPSTR, int)
     // TODO: Replace with something better as needed
 
     // Camera info
-    XMMATRIX view = XMMatrixLookToRH(
-        XMVectorSet(0.f, 0.f, 5.f, 1.f),    // Camera Position 5 units along Z
-        XMVectorSet(0.f, 0.f, -1.f, 0.f),   // Looking back along -Z towards origin
-        XMVectorSet(0.f, 1.f, 0.f, 0.f));   // Up
+    XMVECTOR position = XMVectorSet(0.f, 100.f, 1000.f, 1.f);
+    XMVECTOR forward = XMVectorSet(-1.f, 0.f, 0.f, 0.f);
+    XMVECTOR right = XMVectorSet(-1.f, 0.f, 0.f, 0.f);
+    XMVECTOR up = XMVectorSet(0.f, 1.f, 0.f, 0.f);
+    float yaw = 0.f;
+    float pitch = 0.f;
 
     XMMATRIX projection = XMMatrixPerspectiveFovRH(
         Fov,
@@ -112,9 +122,54 @@ int WINAPI WinMain(HINSTANCE instance, HINSTANCE, LPSTR, int)
                 break;
             }
 
-            // TODO: Render something!
+            // TODO: Replace with something better as needed
 
-            renderer->Render(VSyncEnabled);
+            XMVECTOR movement = XMVectorZero();
+
+            if (GetAsyncKeyState('W') & 0x8000)
+            {
+                movement += forward;
+            }
+            if (GetAsyncKeyState('A') & 0x8000)
+            {
+                movement += -right;
+            }
+            if (GetAsyncKeyState('S') & 0x8000)
+            {
+                movement += -forward;
+            }
+            if (GetAsyncKeyState('D') & 0x8000)
+            {
+                movement += right;
+            }
+
+            position += XMVector3Normalize(movement) * CameraMoveSpeed;
+
+            if (GetAsyncKeyState(VK_LEFT) & 0x8000)
+            {
+                yaw += CameraTurnSpeed;
+            }
+            if (GetAsyncKeyState(VK_RIGHT) & 0x8000)
+            {
+                yaw -= CameraTurnSpeed;
+            }
+            if (GetAsyncKeyState(VK_UP) & 0x8000)
+            {
+                pitch += CameraTurnSpeed;
+            }
+            if (GetAsyncKeyState(VK_DOWN) & 0x8000)
+            {
+                pitch -= CameraTurnSpeed;
+            }
+
+            //forward = XMVector3TransformNormal(XMVectorSet(0.f, 0.f, -1.f, 0.f), XMMatrixRotationX(pitch) * XMMatrixRotationY(yaw));
+
+            // Orthonormalize
+            right = XMVector3Cross(forward, up);
+            forward = XMVector3Cross(up, right);
+            up = XMVector3Cross(right, forward);
+
+            renderer->Render(XMMatrixLookToRH(position, forward, up), projection, VSyncEnabled);
 
             swprintf_s(caption, L"%s (%dx%d) - FPS: %3.2f", ClassName, ScreenWidth, ScreenHeight, frameRate);
             SetWindowText(Window, caption);

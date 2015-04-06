@@ -2,6 +2,15 @@
 #include "ObjModel.h"
 #include "Debug.h"
 
+//#define PRINT_UNKNOWN_LINES
+
+#if defined(PRINT_UNKNOWN_LINES)
+#define PRINT_LINE(x) Log(L"%S", x);
+#else
+#define PRINT_LINE(x)
+#endif
+
+
 bool ObjModel::Load(const wchar_t* filename)
 {
     FileHandle file(CreateFile(filename, GENERIC_READ, FILE_SHARE_READ, nullptr,
@@ -139,7 +148,7 @@ bool ObjModel::Load(const wchar_t* filename)
         default:
         case '#':   // Comment
             // Echo to the debug output for now
-            Log(L"%S", line);
+            PRINT_LINE(line);
             break;
         }
 
@@ -313,6 +322,27 @@ bool ObjModel::LoadMaterials(const wchar_t* filename)
 
     file.Close();
 
+    wchar_t basePath[1024] = {};
+    wcscpy_s(basePath, filename);
+
+    wchar_t* slash1 = wcsrchr(basePath, L'\\');
+    wchar_t* slash2 = wcsrchr(basePath, L'/');
+    if (!slash1) slash1 = slash2;
+    if (slash1 && slash2 && slash2 > slash1)
+    {
+        slash1 = slash2;
+    }
+    if (slash1)
+    {
+        *(slash1 + 1) = 0;
+    }
+    else
+    {
+        basePath[0] = 0;
+    }
+
+    wchar_t path[1024] = {};
+
     ObjMaterial* currentMaterial = nullptr;
 
     char* p = buffer.get();
@@ -332,7 +362,7 @@ bool ObjModel::LoadMaterials(const wchar_t* filename)
         {
             // Comment
             // Echo to the debug output for now
-            Log(L"%S", line);
+            PRINT_LINE(line);
         }
         else if (_strnicmp(line, "newmtl", 6) == 0)
         {
@@ -382,7 +412,7 @@ bool ObjModel::LoadMaterials(const wchar_t* filename)
                         break;
                     default:
                         // Unknown, print it
-                        Log(L"%S", line);
+                        PRINT_LINE(line);
                         break;
                     }
                     break;
@@ -395,7 +425,7 @@ bool ObjModel::LoadMaterials(const wchar_t* filename)
                     else
                     {
                         // Unknown, print it
-                        Log(L"%S", line);
+                        PRINT_LINE(line);
                     }
                     break;
 
@@ -407,7 +437,7 @@ bool ObjModel::LoadMaterials(const wchar_t* filename)
                     else
                     {
                         // Unknown, print it
-                        Log(L"%S", line);
+                        PRINT_LINE(line);
                     }
                     break;
 
@@ -418,52 +448,60 @@ bool ObjModel::LoadMaterials(const wchar_t* filename)
                     }
                     else if (_strnicmp(line, "disp", 4) == 0)   // displacement map
                     {
-                        currentMaterial->TextureMaps[ObjMaterial::TextureType::Displacement] = (line + 5);
+                        swprintf_s(path, L"%s%S", basePath, (line + 5));
+                        currentMaterial->TextureMaps[ObjMaterial::TextureType::Displacement] = path;
                     }
                     break;
 
                 case 'b':
                     if (_strnicmp(line, "bump", 4) == 0)   // bump map
                     {
-                        currentMaterial->TextureMaps[ObjMaterial::TextureType::Bump] = (line + 5);
+                        swprintf_s(path, L"%s%S", basePath, (line + 5));
+                        currentMaterial->TextureMaps[ObjMaterial::TextureType::Bump] = path;
                     }
                     break;
 
                 case 'm':
                     if (_strnicmp(line, "map_Ka", 6) == 0)  // Ambient color
                     {
-                        currentMaterial->TextureMaps[ObjMaterial::TextureType::Ambient] = (line + 7);
+                        swprintf_s(path, L"%s%S", basePath, (line + 7));
+                        currentMaterial->TextureMaps[ObjMaterial::TextureType::Ambient] = path;
                     }
                     else if (_strnicmp(line, "map_Kd", 6) == 0)  // Diffuse color
                     {
-                        currentMaterial->TextureMaps[ObjMaterial::TextureType::Diffuse] = (line + 7);
+                        swprintf_s(path, L"%s%S", basePath, (line + 7));
+                        currentMaterial->TextureMaps[ObjMaterial::TextureType::Diffuse] = path;
                     }
                     else if (_strnicmp(line, "map_Ks", 6) == 0)  // Specular color
                     {
-                        currentMaterial->TextureMaps[ObjMaterial::TextureType::SpecularColor] = (line + 7);
+                        swprintf_s(path, L"%s%S", basePath, (line + 7));
+                        currentMaterial->TextureMaps[ObjMaterial::TextureType::SpecularColor] = path;
                     }
                     else if (_strnicmp(line, "map_Ns", 6) == 0)  // Specular Power
                     {
-                        currentMaterial->TextureMaps[ObjMaterial::TextureType::SpecularPower] = (line + 7);
+                        swprintf_s(path, L"%s%S", basePath, (line + 7));
+                        currentMaterial->TextureMaps[ObjMaterial::TextureType::SpecularPower] = path;
                     }
                     else if (_strnicmp(line, "map_d", 5) == 0)  // Transparency
                     {
-                        currentMaterial->TextureMaps[ObjMaterial::TextureType::Transparency] = (line + 6);
+                        swprintf_s(path, L"%s%S", basePath, (line + 6));
+                        currentMaterial->TextureMaps[ObjMaterial::TextureType::Transparency] = path;
                     }
                     else if (_strnicmp(line, "map_bump", 8) == 0)  // Bump
                     {
-                        currentMaterial->TextureMaps[ObjMaterial::TextureType::Bump] = (line + 9);
+                        swprintf_s(path, L"%s%S", basePath, (line + 9));
+                        currentMaterial->TextureMaps[ObjMaterial::TextureType::Bump] = path;
                     }
                     else
                     {
                         // Unknown, print it
-                        Log(L"%S", line);
+                        PRINT_LINE(line);
                     }
                     break;
 
                 default:
                     // Unknown line, print it
-                    Log(L"%S", line);
+                    PRINT_LINE(line);
                     break;
                 }
             }

@@ -27,6 +27,9 @@
     <ClInclude Include="ObjModel.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="TestRenderer.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="Debug.cpp">
@@ -44,5 +47,16 @@
     <ClCompile Include="ObjModel.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="TestRenderer.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+  </ItemGroup>
+  <ItemGroup>
+    <FxCompile Include="SimpleTransformVS.hlsl">
+      <Filter>Resource Files</Filter>
+    </FxCompile>
+    <FxCompile Include="SimpleTexturePS.hlsl">
+      <Filter>Resource Files</Filter>
+    </FxCompile>
   </ItemGroup>
 </Project>

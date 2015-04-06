@@ -19,7 +19,7 @@ struct ObjMaterial
     XMFLOAT3    SpecularColor;
     float       SpecularPower;  // exponent term for highlight
     float       Transparency;   // 1 - Alpha, so 1.0 is fully transparent, 0 is fully opaque
-    std::map<TextureType, std::string> TextureMaps;
+    std::map<TextureType, std::wstring> TextureMaps;
 };
 
 struct ObjModelPart

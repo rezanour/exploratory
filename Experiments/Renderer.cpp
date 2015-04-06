@@ -30,9 +30,6 @@ bool Renderer::Render(bool vsync)
     return Present(vsync);
 }
 
-//**************************************************************************************************
-// Internal methods
-
 bool Renderer::Initialize()
 {
     D3D12_CREATE_DEVICE_FLAG d3dFlag = D3D12_CREATE_DEVICE_NONE;

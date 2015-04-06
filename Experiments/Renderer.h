@@ -10,7 +10,7 @@ public:
     ~Renderer();
 
     // Pass in parsed OBJ data to generate runtime meshes in the scene from
-    bool AddMeshes(const ObjModel* data);
+    bool AddMeshes(const std::unique_ptr<ObjModel>& data);
 
     bool Render(bool vsync);
 
