@@ -1,6 +1,7 @@
 #include "Precomp.h"
 #include "Debug.h"
 #include "Renderer.h"
+#include "ObjModel.h"
 
 // Constants
 static const wchar_t ClassName[] = L"Experiments Test Application";
@@ -32,12 +33,25 @@ int WINAPI WinMain(HINSTANCE instance, HINSTANCE, LPSTR, int)
         return -1;
     }
 
+    //std::unique_ptr<ObjModel> objModel(new ObjModel);
+    //if (!objModel)
+    //{
+    //    assert(false);
+    //    return -2;
+    //}
+
+    //if (!objModel->Load(L"../Assets/crytek-sponza/sponza.obj"))
+    //{
+    //    assert(false);
+    //    return -3;
+    //}
+
     // Initialize graphics
-    std::unique_ptr<Renderer> renderer = Renderer::Create(Window);
+    std::unique_ptr<Renderer> renderer(Renderer::Create(Window));
     if (!renderer)
     {
         assert(false);
-        return -2;
+        return -4;
     }
 
     ShowWindow(Window, SW_SHOW);
