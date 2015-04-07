@@ -25,6 +25,9 @@ bld/
 # Misc Build files
 [Bb]uild[Pp]rocess[Tt]emplates/
 
+# Built assets (can rebuild locally, no need to check in huge files)
+[Pp]rocessed[Cc]ontent/
+
 # Visual Studo 2015 cache/options directory
 .vs/
 
@@ -46,7 +49,6 @@ dlldata.c
 *_i.h
 *.ilk
 *.meta
-*.obj
 *.pch
 *.pdb
 *.pgc

@@ -2,7 +2,6 @@
 #include "Debug.h"
 #include "Renderer.h"
 #include "TestRenderer.h"
-#include "ObjModel.h"
 
 // Constants
 static const wchar_t ClassName[] = L"Experiments Test Application";
@@ -12,6 +11,7 @@ static const float Fov = XMConvertToRadians(90.f);
 static const float NearClip = 0.5f;
 static const float FarClip = 10000.f;
 static const float CameraMoveSpeed = 25.f;
+//static const float CameraMoveSpeed = 0.5f;
 static const float CameraTurnSpeed = 0.0125f;
 static const bool VSyncEnabled = true;
 
@@ -35,19 +35,6 @@ int WINAPI WinMain(HINSTANCE instance, HINSTANCE, LPSTR, int)
         return -1;
     }
 
-    std::unique_ptr<ObjModel> objModel(new ObjModel);
-    if (!objModel)
-    {
-        assert(false);
-        return -2;
-    }
-
-    if (!objModel->Load(L"../Assets/crytek-sponza/sponza.obj"))
-    {
-        assert(false);
-        return -3;
-    }
-
     // Initialize graphics
     std::unique_ptr<TestRenderer> renderer(TestRenderer::Create(Window));
     if (!renderer)
@@ -56,7 +43,8 @@ int WINAPI WinMain(HINSTANCE instance, HINSTANCE, LPSTR, int)
         return -4;
     }
 
-    if (!renderer->AddMeshes(objModel))
+    if (!renderer->AddMeshes(L"../ProcessedContent/crytek-sponza/sponza.model"))
+    //if (!renderer->AddMeshes(L"../ProcessedContent/sibenik/sibenik.model"))
     {
         assert(false);
         return -5;
@@ -74,9 +62,10 @@ int WINAPI WinMain(HINSTANCE instance, HINSTANCE, LPSTR, int)
     // TODO: Replace with something better as needed
 
     // Camera info
-    XMVECTOR position = XMVectorSet(0.f, 100.f, 1000.f, 1.f);
+    XMVECTOR position = XMVectorSet(0.f, 100.f, 0.f, 1.f);
+    //XMVECTOR position = XMVectorSet(0.f, -5.f, 0.f, 1.f);
     XMVECTOR forward = XMVectorSet(-1.f, 0.f, 0.f, 0.f);
-    XMVECTOR right = XMVectorSet(-1.f, 0.f, 0.f, 0.f);
+    XMVECTOR right = XMVectorSet(0.f, 0.f, -1.f, 0.f);
     XMVECTOR up = XMVectorSet(0.f, 1.f, 0.f, 0.f);
     float yaw = 0.f;
     float pitch = 0.f;

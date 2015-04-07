@@ -23,7 +23,7 @@ float4 main(Vertex input) : SV_TARGET
 
     return float4(diffuse.xyz * nDotL1 + diffuse.xyz * nDotL2, 1.f);
 #else
-    float4 diffuse = float4(0.6f, 0.6f, 0.6f, 1.f);// DiffuseMap.Sample(Sampler, input.TexCoord);
+    float4 diffuse = DiffuseMap.Sample(Sampler, input.TexCoord);
     return diffuse;
 #endif
 }

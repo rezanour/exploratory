@@ -29,8 +29,7 @@ public:
     static std::unique_ptr<TestRenderer> Create(HWND window);
     ~TestRenderer();
 
-    // Pass in parsed OBJ data to generate runtime meshes in the scene from
-    bool AddMeshes(const std::unique_ptr<ObjModel>& data);
+    bool AddMeshes(const std::wstring& modelFilename);
 
     bool Render(FXMMATRIX view, FXMMATRIX projection, bool vsync);
 

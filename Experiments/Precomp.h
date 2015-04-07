@@ -22,6 +22,9 @@
 #include <DirectXMath.h>
 using namespace DirectX;
 
+// Custom asset loading
+#include <AssetLoader.h>
+
 // For RAII wrappers
 #include <wrl.h>
 using namespace Microsoft::WRL;

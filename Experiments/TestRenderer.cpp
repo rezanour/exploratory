@@ -1,6 +1,5 @@
 #include "Precomp.h"
 #include "TestRenderer.h"
-#include "ObjModel.h"
 #include "Debug.h"
 #include "SimpleTransformVS.h"
 #include "SimpleTexturePS.h"
@@ -27,7 +26,7 @@ TestRenderer::~TestRenderer()
 {
 }
 
-bool TestRenderer::AddMeshes(const std::unique_ptr<ObjModel>& data)
+bool TestRenderer::AddMeshes(const std::wstring& modelFilename)
 {
     // This function implicitly uses WIC via DirectXTex, so we need COM initialized
     struct CoInitRAII
@@ -55,52 +54,62 @@ bool TestRenderer::AddMeshes(const std::unique_ptr<ObjModel>& data)
         return false;
     }
 
+    static_assert(sizeof(ModelVertex) == sizeof(Vertex), "Make sure structures (and padding) match so we can read directly!");
+
+    FileHandle modelFile(CreateFile(modelFilename.c_str(), GENERIC_READ,
+        FILE_SHARE_READ, nullptr, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr));
+    if (!modelFile.IsValid())
+    {
+        LogError(L"Failed to open asset file.");
+        return false;
+    }
+
     std::vector<Vertex> vertices;
 
-    for (int iObj = 0; iObj < (int)data->Objects.size(); ++iObj)
+    DWORD bytesRead{};
+    ModelHeader header{};
+    if (!ReadFile(modelFile.Get(), &header, sizeof(header), &bytesRead, nullptr))
     {
-        const ObjModelObject& obj = data->Objects[iObj];
+        LogError(L"Failed to read file.");
+        return false;
+    }
 
-        for (int iPart = 0; iPart < (int)obj.Parts.size(); ++iPart)
+    if (header.Signature != header.ExpectedSignature)
+    {
+        LogError(L"Invalid model file.");
+        return false;
+    }
+
+    for (int iObj = 0; iObj < (int)header.NumObjects; ++iObj)
+    {
+        ModelObject object{};
+        if (!ReadFile(modelFile.Get(), &object, sizeof(object), &bytesRead, nullptr))
         {
-            vertices.clear();
+            LogError(L"Failed to read file.");
+            return false;
+        }
 
-            const ObjModelPart& part = obj.Parts[iPart];
-
-            for (int i = 0; i < (int)part.PositionIndices.size(); ++i)
+        for (int iPart = 0; iPart < (int)object.NumParts; ++iPart)
+        {
+            ModelPart part{};
+            if (!ReadFile(modelFile.Get(), &part, sizeof(part), &bytesRead, nullptr))
             {
-                Vertex v{};
-
-                XMFLOAT4& pos = data->Positions[part.PositionIndices[i]];
-                v.Position.x = pos.x;
-                v.Position.y = pos.y;
-                v.Position.z = pos.z;
-
-                if (part.NormalIndices.size() > 0 && i < part.NormalIndices.size())
-                {
-                    XMFLOAT3& norm = data->Normals[part.NormalIndices[i]];
-                    v.Normal.x = norm.x;
-                    v.Normal.y = norm.y;
-                    v.Normal.z = norm.z;
-                }
-
-                if (part.TextureIndices.size() > 0 && i < part.TextureIndices.size())
-                {
-                    XMFLOAT3& tex = data->TexCoords[part.TextureIndices[i]];
-                    v.TexCoord.x = tex.x;
-                    v.TexCoord.y = tex.y;
-                }
-
-                vertices.push_back(v);
+                LogError(L"Failed to read file.");
+                return false;
             }
 
-            if (part.NormalIndices.empty())
+            if (part.NumVertices > vertices.size())
             {
-                // TODO: Generate normals
+                vertices.resize(part.NumVertices);
+            }
+            if (!ReadFile(modelFile.Get(), vertices.data(), sizeof(Vertex) * part.NumVertices, &bytesRead, nullptr))
+            {
+                LogError(L"Failed to read file.");
+                return false;
             }
 
             std::shared_ptr<Mesh> mesh = std::make_shared<Mesh>();
-            mesh->VertexCount = (int)vertices.size();
+            mesh->VertexCount = (int)part.NumVertices;
 
             D3D11_BUFFER_DESC bd = {};
             bd.BindFlags = D3D11_BIND_VERTEX_BUFFER;
@@ -120,40 +129,32 @@ bool TestRenderer::AddMeshes(const std::unique_ptr<ObjModel>& data)
                 return false;
             }
 
-            for (int iMat = 0; iMat < (int)data->Materials.size(); ++iMat)
+            if (part.DiffuseTexture[0] != 0)
             {
-                const ObjMaterial& mat = data->Materials[iMat];
-                if (mat.Name == part.Material)
+                TexMetadata metadata;
+                ScratchImage image;
+                HRESULT hr = LoadFromWICFile(part.DiffuseTexture, WIC_FLAGS_NONE, &metadata, image);
+                if (FAILED(hr))
                 {
-                    auto it = mat.TextureMaps.find(ObjMaterial::TextureType::Diffuse);
-                    if (it != mat.TextureMaps.end())
+                    // Maybe it's a TGA?
+                    hr = LoadFromTGAFile(part.DiffuseTexture, &metadata, image);
+                    if (FAILED(hr))
                     {
-                        TexMetadata metadata;
-                        ScratchImage image;
-                        HRESULT hr = LoadFromWICFile(it->second.c_str(), WIC_FLAGS_NONE, &metadata, image);
+                        // Maybe it's a DDS?
+                        hr = LoadFromDDSFile(part.DiffuseTexture, DDS_FLAGS_NONE, &metadata, image);
                         if (FAILED(hr))
                         {
-                            // Maybe it's a TGA?
-                            hr = LoadFromTGAFile(it->second.c_str(), &metadata, image);
-                            if (FAILED(hr))
-                            {
-                                // Maybe it's a DDS?
-                                hr = LoadFromDDSFile(it->second.c_str(), DDS_FLAGS_NONE, &metadata, image);
-                                if (FAILED(hr))
-                                {
-                                    LogError(L"Failed to load texture image.");
-                                    return false;
-                                }
-                            }
-                        }
-
-                        hr = CreateShaderResourceView(Device.Get(), image.GetImages(), image.GetImageCount(), metadata, &mesh->SRV);
-                        if (FAILED(hr))
-                        {
-                            LogError(L"Failed to create texture SRV.");
+                            LogError(L"Failed to load texture image.");
                             return false;
                         }
                     }
+                }
+
+                hr = CreateShaderResourceView(Device.Get(), image.GetImages(), image.GetImageCount(), metadata, &mesh->SRV);
+                if (FAILED(hr))
+                {
+                    LogError(L"Failed to create texture SRV.");
+                    return false;
                 }
             }
 
