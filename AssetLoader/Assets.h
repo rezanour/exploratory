@@ -28,12 +28,9 @@ bool ProcessAssets(
     const std::wstring& outputRoot,
     const std::vector<SourceAsset>& assets);
 
-bool BuildModel(
-    const std::wstring& assetFilename,
-    const std::wstring& outputFilename);
+bool BuildAsset(const SourceAsset& asset, std::wstring& outputRelativePath);
 
 struct ObjModel;
 
-bool SaveModel(
-    const std::unique_ptr<ObjModel>& objModel,
-    const std::wstring& outputFilename);
+bool SaveModel(const std::unique_ptr<ObjModel>& objModel, const std::wstring& outputFilename);
+bool SaveTexture(const std::wstring& assetFilename, const std::wstring& outputFilename);

@@ -123,6 +123,16 @@ bool ObjModel::Load(const wchar_t* filename)
 
         case 'o':   // Object
         case 'g':   // Group
+            if (currentObject && currentPart)
+            {
+                if (currentPart->MinBounds.x < currentObject->MinBounds.x) currentObject->MinBounds.x = currentPart->MinBounds.x;
+                if (currentPart->MinBounds.y < currentObject->MinBounds.y) currentObject->MinBounds.y = currentPart->MinBounds.y;
+                if (currentPart->MinBounds.z < currentObject->MinBounds.z) currentObject->MinBounds.z = currentPart->MinBounds.z;
+                if (currentPart->MaxBounds.x > currentObject->MaxBounds.x) currentObject->MaxBounds.x = currentPart->MaxBounds.x;
+                if (currentPart->MaxBounds.y > currentObject->MaxBounds.y) currentObject->MaxBounds.y = currentPart->MaxBounds.y;
+                if (currentPart->MaxBounds.z > currentObject->MaxBounds.z) currentObject->MaxBounds.z = currentPart->MaxBounds.z;
+            }
+
             // Insert a new object
             Objects.push_back(ObjModelObject());
 
@@ -130,14 +140,29 @@ bool ObjModel::Load(const wchar_t* filename)
             // This pointer is only valid as long as we don't insert or remove anything from this vector.
             currentObject = &Objects[Objects.size() - 1];
             currentObject->Name = (line + 2);
+            currentObject->MinBounds = XMFLOAT3(FLT_MAX, FLT_MAX, FLT_MAX);
+            currentObject->MaxBounds = XMFLOAT3(-FLT_MAX, -FLT_MAX, -FLT_MAX);
             break;
 
         case 'u':
             if (_strnicmp(line, "usemtl", 6) == 0)
             {
+                if (currentPart)
+                {
+                    if (currentPart->MinBounds.x < currentObject->MinBounds.x) currentObject->MinBounds.x = currentPart->MinBounds.x;
+                    if (currentPart->MinBounds.y < currentObject->MinBounds.y) currentObject->MinBounds.y = currentPart->MinBounds.y;
+                    if (currentPart->MinBounds.z < currentObject->MinBounds.z) currentObject->MinBounds.z = currentPart->MinBounds.z;
+                    if (currentPart->MaxBounds.x > currentObject->MaxBounds.x) currentObject->MaxBounds.x = currentPart->MaxBounds.x;
+                    if (currentPart->MaxBounds.y > currentObject->MaxBounds.y) currentObject->MaxBounds.y = currentPart->MaxBounds.y;
+                    if (currentPart->MaxBounds.z > currentObject->MaxBounds.z) currentObject->MaxBounds.z = currentPart->MaxBounds.z;
+                }
+
+                // If we are wrapping up a part, store off bb
                 currentObject->Parts.push_back(ObjModelPart());
                 currentPart = &currentObject->Parts[currentObject->Parts.size() - 1];
                 currentPart->Material = (line + 7);
+                currentPart->MinBounds = XMFLOAT3(FLT_MAX, FLT_MAX, FLT_MAX);
+                currentPart->MaxBounds = XMFLOAT3(-FLT_MAX, -FLT_MAX, -FLT_MAX);
             }
             else
             {
@@ -158,6 +183,16 @@ bool ObjModel::Load(const wchar_t* filename)
         {
             ++p;
         }
+    }
+
+    if (currentPart)
+    {
+        if (currentPart->MinBounds.x < currentObject->MinBounds.x) currentObject->MinBounds.x = currentPart->MinBounds.x;
+        if (currentPart->MinBounds.y < currentObject->MinBounds.y) currentObject->MinBounds.y = currentPart->MinBounds.y;
+        if (currentPart->MinBounds.z < currentObject->MinBounds.z) currentObject->MinBounds.z = currentPart->MinBounds.z;
+        if (currentPart->MaxBounds.x > currentObject->MaxBounds.x) currentObject->MaxBounds.x = currentPart->MaxBounds.x;
+        if (currentPart->MaxBounds.y > currentObject->MaxBounds.y) currentObject->MaxBounds.y = currentPart->MaxBounds.y;
+        if (currentPart->MaxBounds.z > currentObject->MaxBounds.z) currentObject->MaxBounds.z = currentPart->MaxBounds.z;
     }
 
     return true;
@@ -220,6 +255,14 @@ void ObjModel::ReadFace(char* line, ObjModelPart* part)
             if (subToken)
             {
                 int32_t positionIndex = atoi(subToken) - 1;
+                const XMFLOAT4& pos = Positions[positionIndex];
+                if (pos.x < part->MinBounds.x) part->MinBounds.x = pos.x;
+                if (pos.y < part->MinBounds.y) part->MinBounds.y = pos.y;
+                if (pos.z < part->MinBounds.z) part->MinBounds.z = pos.z;
+                if (pos.x > part->MaxBounds.x) part->MaxBounds.x = pos.x;
+                if (pos.y > part->MaxBounds.y) part->MaxBounds.y = pos.y;
+                if (pos.z > part->MaxBounds.z) part->MaxBounds.z = pos.z;
+
                 if (posFirst < 0)
                 {
                     // First point

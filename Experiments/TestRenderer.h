@@ -20,6 +20,7 @@ class TestRenderer
 
     struct Mesh
     {
+        XMFLOAT4X4 World;
         uint32_t VertexCount;
         ComPtr<ID3D11Buffer> VertexBuffer;
         ComPtr<ID3D11ShaderResourceView> SRV;
@@ -29,7 +30,7 @@ public:
     static std::unique_ptr<TestRenderer> Create(HWND window);
     ~TestRenderer();
 
-    bool AddMeshes(const std::wstring& modelFilename);
+    bool AddMeshes(const std::wstring& contentRoot, const std::wstring& modelFilename, const XMFLOAT3& desiredSize);
 
     bool Render(FXMMATRIX view, FXMMATRIX projection, bool vsync);
 

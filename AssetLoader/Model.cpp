@@ -5,9 +5,7 @@
 #include "StringHelpers.h"
 #include "AssetLoader.h"
 
-static std::wstring FindDiffuseTexture(
-    const std::unique_ptr<ObjModel>& model,
-    const std::string& materialName)
+static std::wstring FindDiffuseTexture(const std::unique_ptr<ObjModel>& model, const std::string& materialName)
 {
     std::wstring texture;
 
@@ -27,9 +25,7 @@ static std::wstring FindDiffuseTexture(
     return texture;
 }
 
-bool SaveModel(
-    const std::unique_ptr<ObjModel>& objModel,
-    const std::wstring& outputFilename)
+bool SaveModel(const std::unique_ptr<ObjModel>& objModel, const std::wstring& outputFilename)
 {
     FileHandle outputFile(CreateFile(outputFilename.c_str(), GENERIC_WRITE,
         0, nullptr, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr));
@@ -58,6 +54,8 @@ bool SaveModel(
         ModelObject object{};
         strcpy_s(object.Name, srcObject.Name.c_str());
         object.NumParts = (uint32_t)srcObject.Parts.size();
+        object.MinBounds = srcObject.MinBounds;
+        object.MaxBounds = srcObject.MaxBounds;
 
         if (!WriteFile(outputFile.Get(), &object, sizeof(object), &bytesWritten, nullptr))
         {
@@ -70,8 +68,21 @@ bool SaveModel(
             const ObjModelPart& srcPart = srcObject.Parts[iPart];
 
             ModelPart part{};
-            wcscpy_s(part.DiffuseTexture, FindDiffuseTexture(objModel, srcPart.Material).c_str());
+            std::wstring diffuseTexture = FindDiffuseTexture(objModel, srcPart.Material);
+
+            if (!diffuseTexture.empty())
+            {
+                if (!BuildAsset(SourceAsset(AssetType::Texture, std::move(diffuseTexture)), diffuseTexture))
+                {
+                    LogError(L"Error writing output file.");
+                    return false;
+                }
+            }
+
+            wcscpy_s(part.DiffuseTexture, diffuseTexture.c_str());
             part.NumVertices = (uint32_t)srcPart.PositionIndices.size();
+            part.MinBounds = srcPart.MinBounds;
+            part.MaxBounds = srcPart.MaxBounds;
 
             if (!WriteFile(outputFile.Get(), &part, sizeof(part), &bytesWritten, nullptr))
             {

@@ -7,12 +7,12 @@
 static const wchar_t ClassName[] = L"Experiments Test Application";
 static const uint32_t ScreenWidth = 1280;
 static const uint32_t ScreenHeight = 720;
-static const float Fov = XMConvertToRadians(90.f);
+static const float Fov = XMConvertToRadians(70.f);
 static const float NearClip = 0.5f;
 static const float FarClip = 10000.f;
-static const float CameraMoveSpeed = 25.f;
-//static const float CameraMoveSpeed = 0.5f;
-static const float CameraTurnSpeed = 0.0125f;
+static const float CameraMoveSpeed = 2.5f;
+static const float CameraTurnSpeed = 0.025f;
+static const float MouseTurnSpeed = 0.005f;
 static const bool VSyncEnabled = true;
 
 // Application variables
@@ -43,8 +43,9 @@ int WINAPI WinMain(HINSTANCE instance, HINSTANCE, LPSTR, int)
         return -4;
     }
 
-    if (!renderer->AddMeshes(L"../ProcessedContent/crytek-sponza/sponza.model"))
-    //if (!renderer->AddMeshes(L"../ProcessedContent/sibenik/sibenik.model"))
+    XMFLOAT3 desiredSize(25.f, 50.f, 25.f);
+    if (!renderer->AddMeshes(L"../ProcessedContent/", L"crytek-sponza/sponza.model", desiredSize))
+    //if (!renderer->AddMeshes(L"../ProcessedContent/sibenik/sibenik.model", desiredSize))
     {
         assert(false);
         return -5;
@@ -62,13 +63,15 @@ int WINAPI WinMain(HINSTANCE instance, HINSTANCE, LPSTR, int)
     // TODO: Replace with something better as needed
 
     // Camera info
-    XMVECTOR position = XMVectorSet(0.f, 100.f, 0.f, 1.f);
-    //XMVECTOR position = XMVectorSet(0.f, -5.f, 0.f, 1.f);
+    XMVECTOR position = XMVectorSet(0.f, 30.f, 0.f, 1.f);
     XMVECTOR forward = XMVectorSet(-1.f, 0.f, 0.f, 0.f);
     XMVECTOR right = XMVectorSet(0.f, 0.f, -1.f, 0.f);
     XMVECTOR up = XMVectorSet(0.f, 1.f, 0.f, 0.f);
     float yaw = 0.f;
     float pitch = 0.f;
+    bool hasFocus = false;
+    POINT lastMousePos{};
+    POINT curMousePos{};
 
     XMMATRIX projection = XMMatrixPerspectiveFovRH(
         Fov,
@@ -113,6 +116,23 @@ int WINAPI WinMain(HINSTANCE instance, HINSTANCE, LPSTR, int)
 
             // TODO: Replace with something better as needed
 
+            if (GetForegroundWindow() == Window)
+            {
+                // Have focus
+                if (!hasFocus)
+                {
+                    // Reset mouse pos info
+                    GetCursorPos(&lastMousePos);
+                    ShowCursor(FALSE);
+                    hasFocus = true;
+                }
+            }
+            else
+            {
+                hasFocus = false;
+                ShowCursor(TRUE);
+            }
+
             XMVECTOR movement = XMVectorZero();
 
             if (GetAsyncKeyState('W') & 0x8000)
@@ -150,13 +170,19 @@ int WINAPI WinMain(HINSTANCE instance, HINSTANCE, LPSTR, int)
             {
                 pitch -= CameraTurnSpeed;
             }
+            if (hasFocus)
+            {
+                GetCursorPos(&curMousePos);
+                yaw -= (curMousePos.x - lastMousePos.x) * MouseTurnSpeed;
+                pitch -= (curMousePos.y - lastMousePos.y) * MouseTurnSpeed;
 
-            //forward = XMVector3TransformNormal(XMVectorSet(0.f, 0.f, -1.f, 0.f), XMMatrixRotationX(pitch) * XMMatrixRotationY(yaw));
+                lastMousePos = curMousePos;
+            }
 
-            // Orthonormalize
-            right = XMVector3Cross(forward, up);
+            forward = XMVector3TransformNormal(XMVectorSet(0.f, 0.f, -1.f, 0.f), XMMatrixRotationY(yaw));
+            right = XMVector3Cross(forward, XMVectorSet(0.f, 1.f, 0.f, 0.f));
+            up = XMVector3TransformNormal(XMVectorSet(0.f, 1.f, 0.f, 0.f), XMMatrixRotationAxis(right, pitch));
             forward = XMVector3Cross(up, right);
-            up = XMVector3Cross(right, forward);
 
             renderer->Render(XMMatrixLookToRH(position, forward, up), projection, VSyncEnabled);
 

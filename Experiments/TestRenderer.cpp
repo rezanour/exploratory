@@ -26,37 +26,11 @@ TestRenderer::~TestRenderer()
 {
 }
 
-bool TestRenderer::AddMeshes(const std::wstring& modelFilename)
+bool TestRenderer::AddMeshes(const std::wstring& contentRoot, const std::wstring& modelFilename, const XMFLOAT3& desiredSize)
 {
-    // This function implicitly uses WIC via DirectXTex, so we need COM initialized
-    struct CoInitRAII
-    {
-        HRESULT hrCoInit;
-
-        CoInitRAII()
-        {
-            hrCoInit = CoInitialize(nullptr);
-        }
-
-        ~CoInitRAII()
-        {
-            if (SUCCEEDED(hrCoInit))
-            {
-                CoUninitialize();
-            }
-        }
-    };
-
-    CoInitRAII com;
-    if (FAILED(com.hrCoInit))
-    {
-        LogError(L"Failed to initialize COM.");
-        return false;
-    }
-
     static_assert(sizeof(ModelVertex) == sizeof(Vertex), "Make sure structures (and padding) match so we can read directly!");
 
-    FileHandle modelFile(CreateFile(modelFilename.c_str(), GENERIC_READ,
+    FileHandle modelFile(CreateFile((contentRoot + modelFilename).c_str(), GENERIC_READ,
         FILE_SHARE_READ, nullptr, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr));
     if (!modelFile.IsValid())
     {
@@ -80,6 +54,8 @@ bool TestRenderer::AddMeshes(const std::wstring& modelFilename)
         return false;
     }
 
+    XMFLOAT4X4 worldMatrix{};
+
     for (int iObj = 0; iObj < (int)header.NumObjects; ++iObj)
     {
         ModelObject object{};
@@ -87,6 +63,19 @@ bool TestRenderer::AddMeshes(const std::wstring& modelFilename)
         {
             LogError(L"Failed to read file.");
             return false;
+        }
+
+        // Determine scale based on first object
+        if (iObj == 0)
+        {
+            XMFLOAT3 size = XMFLOAT3(
+                object.MaxBounds.x - object.MinBounds.x,
+                object.MaxBounds.y - object.MinBounds.y,
+                object.MaxBounds.z - object.MinBounds.z);
+
+            XMFLOAT3 scales = XMFLOAT3(desiredSize.x / size.x, desiredSize.y / size.y, desiredSize.z / size.z);
+
+            XMStoreFloat4x4(&worldMatrix, XMMatrixScaling(scales.x, scales.y, scales.z));
         }
 
         for (int iPart = 0; iPart < (int)object.NumParts; ++iPart)
@@ -109,6 +98,7 @@ bool TestRenderer::AddMeshes(const std::wstring& modelFilename)
             }
 
             std::shared_ptr<Mesh> mesh = std::make_shared<Mesh>();
+            mesh->World = worldMatrix;
             mesh->VertexCount = (int)part.NumVertices;
 
             D3D11_BUFFER_DESC bd = {};
@@ -131,26 +121,82 @@ bool TestRenderer::AddMeshes(const std::wstring& modelFilename)
 
             if (part.DiffuseTexture[0] != 0)
             {
-                TexMetadata metadata;
-                ScratchImage image;
-                HRESULT hr = LoadFromWICFile(part.DiffuseTexture, WIC_FLAGS_NONE, &metadata, image);
+                FileHandle texFile(CreateFile((contentRoot + part.DiffuseTexture).c_str(), GENERIC_READ,
+                    FILE_SHARE_READ, nullptr, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr));
+                if (!texFile.IsValid())
+                {
+                    LogError(L"Failed to open texture.");
+                    return false;
+                }
+
+                uint32_t fileSize = GetFileSize(texFile.Get(), nullptr);
+
+                TextureHeader texHeader{};
+                if (!ReadFile(texFile.Get(), &texHeader, sizeof(texHeader), &bytesRead, nullptr))
+                {
+                    LogError(L"Failed to read texture.");
+                    return false;
+                }
+
+                if (texHeader.Signature != TextureHeader::ExpectedSignature)
+                {
+                    LogError(L"Invalid texture file.");
+                    return false;
+                }
+
+                uint32_t pixelDataSize = fileSize - sizeof(TextureHeader);
+                std::unique_ptr<uint8_t[]> pixelData(new uint8_t[pixelDataSize]);
+                if (!ReadFile(texFile.Get(), pixelData.get(), pixelDataSize, &bytesRead, nullptr))
+                {
+                    LogError(L"Failed to read texture data.");
+                    return false;
+                }
+
+                D3D11_TEXTURE2D_DESC td{};
+                td.ArraySize = texHeader.ArrayCount;
+                td.Format = texHeader.Format;
+                td.Width = texHeader.Width;
+                td.Height = texHeader.Height;
+                td.MipLevels = texHeader.MipLevels;
+                td.BindFlags = D3D11_BIND_SHADER_RESOURCE;
+                td.SampleDesc.Count = 1;
+                td.Usage = D3D11_USAGE_DEFAULT;
+
+                D3D11_SUBRESOURCE_DATA init[20] {};
+                uint32_t width = td.Width;
+                uint32_t height = td.Height;
+                uint32_t bpp = (uint32_t)BitsPerPixel(td.Format) / 8;
+                uint8_t* pPixels = pixelData.get();
+                for (int m = 0; m < (int)td.MipLevels; ++m)
+                {
+                    init[m].pSysMem = pPixels;
+                    init[m].SysMemPitch = width * bpp;
+                    init[m].SysMemSlicePitch = width * height * bpp;
+
+                    width >>= 1;
+                    height >>= 1;
+                    pPixels += init[m].SysMemSlicePitch;
+                }
+                ComPtr<ID3D11Texture2D> texture;
+                HRESULT hr = Device->CreateTexture2D(&td, init, &texture);
                 if (FAILED(hr))
                 {
-                    // Maybe it's a TGA?
-                    hr = LoadFromTGAFile(part.DiffuseTexture, &metadata, image);
+                    // Try without mips
+                    td.MipLevels = 1;
+
+                    init[0].pSysMem = pixelData.get();
+                    init[0].SysMemPitch = td.Width * bpp;
+                    init[0].SysMemSlicePitch = td.Width * td.Height * bpp;
+
+                    hr = Device->CreateTexture2D(&td, init, &texture);
                     if (FAILED(hr))
                     {
-                        // Maybe it's a DDS?
-                        hr = LoadFromDDSFile(part.DiffuseTexture, DDS_FLAGS_NONE, &metadata, image);
-                        if (FAILED(hr))
-                        {
-                            LogError(L"Failed to load texture image.");
-                            return false;
-                        }
+                        LogError(L"Failed to create texture.");
+                        return false;
                     }
                 }
 
-                hr = CreateShaderResourceView(Device.Get(), image.GetImages(), image.GetImageCount(), metadata, &mesh->SRV);
+                hr = Device->CreateShaderResourceView(texture.Get(), nullptr, &mesh->SRV);
                 if (FAILED(hr))
                 {
                     LogError(L"Failed to create texture SRV.");
@@ -169,16 +215,24 @@ bool TestRenderer::Render(FXMMATRIX view, FXMMATRIX projection, bool vsync)
 {
     Clear();
 
-    Constants constants;
-    XMStoreFloat4x4(&constants.World, XMMatrixScaling(0.5f, 0.5f, 0.5f));
-    XMStoreFloat4x4(&constants.ViewProjection, view * projection);
-
-    Context->UpdateSubresource(ConstantBuffer.Get(), 0, nullptr, &constants, sizeof(constants), 0);
+    D3D11_MAPPED_SUBRESOURCE mapped{};
 
     for (int i = 0; i < (int)Meshes.size(); ++i)
     {
         static const uint32_t stride = sizeof(Vertex);
         static const uint32_t offset = 0;
+
+        if (FAILED(Context->Map(ConstantBuffer.Get(), 0, D3D11_MAP_WRITE_DISCARD, 0, &mapped)))
+        {
+            LogError(L"Failed to map constant buffer.");
+        }
+
+        Constants* constants = (Constants*)mapped.pData;
+        XMStoreFloat4x4(&constants->ViewProjection, view * projection);
+        constants->World = Meshes[i]->World;
+
+        Context->Unmap(ConstantBuffer.Get(), 0);
+
         Context->IASetVertexBuffers(0, 1, Meshes[i]->VertexBuffer.GetAddressOf(), &stride, &offset);
         Context->PSSetShaderResources(0, 1, Meshes[i]->SRV.GetAddressOf());
         Context->Draw(Meshes[i]->VertexCount, 0);
@@ -312,7 +366,8 @@ bool TestRenderer::Initialize()
     bd.BindFlags = D3D11_BIND_CONSTANT_BUFFER;
     bd.ByteWidth = sizeof(Constants);
     bd.StructureByteStride = bd.ByteWidth;
-    bd.Usage = D3D11_USAGE_DEFAULT;
+    bd.Usage = D3D11_USAGE_DYNAMIC;
+    bd.CPUAccessFlags = D3D11_CPU_ACCESS_WRITE;
 
     hr = Device->CreateBuffer(&bd, nullptr, &ConstantBuffer);
     if (FAILED(hr))
@@ -326,6 +381,7 @@ bool TestRenderer::Initialize()
     sd.AddressV = D3D11_TEXTURE_ADDRESS_WRAP;
     sd.AddressW = D3D11_TEXTURE_ADDRESS_WRAP;
     sd.Filter = D3D11_FILTER_MIN_MAG_MIP_LINEAR;
+    sd.MaxLOD = 12;
 
     hr = Device->CreateSamplerState(&sd, &Sampler);
     if (FAILED(hr))

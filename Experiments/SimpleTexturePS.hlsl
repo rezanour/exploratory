@@ -18,6 +18,8 @@ float4 main(Vertex input) : SV_TARGET
 
     float4 diffuse = DiffuseMap.Sample(Sampler, input.TexCoord);
 
+    clip(diffuse.a - 0.25f);
+
     float nDotL1 = saturate(dot(normalize(input.Normal), -lightDir1));
     float nDotL2 = saturate(dot(normalize(input.Normal), -lightDir2));
 

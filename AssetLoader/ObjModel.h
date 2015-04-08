@@ -19,12 +19,13 @@ struct ObjMaterial
     XMFLOAT3    SpecularColor;
     float       SpecularPower;  // exponent term for highlight
     float       Transparency;   // 1 - Alpha, so 1.0 is fully transparent, 0 is fully opaque
-    std::map<TextureType, std::wstring> TextureMaps;
+    std::map<TextureType, std::wstring> TextureMaps;    // Relative paths
 };
 
 struct ObjModelPart
 {
     std::string Material;
+    XMFLOAT3 MinBounds, MaxBounds;
 
     // To build triangles, loop through index lists together (if non-empty) and fetch the components
     // matching by each index, and combine into a vertex
@@ -36,6 +37,7 @@ struct ObjModelPart
 struct ObjModelObject
 {
     std::string Name;
+    XMFLOAT3 MinBounds, MaxBounds;
     std::vector<ObjModelPart> Parts;
 };
 

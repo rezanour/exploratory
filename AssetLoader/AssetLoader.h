@@ -6,6 +6,8 @@
 
 #pragma pack(push)
 
+// MODEL
+
 #pragma pack(4)
 
 struct ModelVertex
@@ -30,6 +32,7 @@ struct ModelHeader
 struct ModelObject
 {
     char Name[128];
+    XMFLOAT3 MinBounds, MaxBounds;
     uint32_t NumParts;
 };
 
@@ -37,7 +40,25 @@ struct ModelObject
 struct ModelPart
 {
     wchar_t DiffuseTexture[256];
+    XMFLOAT3 MinBounds, MaxBounds;
     uint32_t NumVertices;
+};
+
+// MODEL
+
+#pragma pack(1)
+
+// Followed immediately by raw texture data ready for uploading to GPU
+struct TextureHeader
+{
+    static const uint32_t ExpectedSignature = 'TEX ';
+
+    uint32_t Signature;
+    uint32_t Width;
+    uint32_t Height;
+    uint32_t ArrayCount;
+    uint32_t MipLevels;
+    DXGI_FORMAT Format;
 };
 
 #pragma pack(pop)

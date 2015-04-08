@@ -6,10 +6,17 @@
 
 static std::map<AssetType, std::wstring> Extensions;
 
+static std::wstring SourceRoot;
+static std::wstring OutputRoot;
+
 // Ensures that all subdirectories up to the file exist
 static bool EnsurePathExists(const std::wstring& path);
 static bool DoesAssetNeedBuilt(const std::wstring& assetFilename, const std::wstring& outputFilename, bool* needsBuild);
 static bool WriteTimeEntry(const std::wstring& assetFilename, const std::wstring& outputFilename);
+
+static bool BuildModel(const std::wstring& assetFilename, const std::wstring& outputFilename);
+static bool BuildTexture(const std::wstring& assetFilename, const std::wstring& outputFilename);
+
 
 bool ProcessAssets(
     const std::wstring& sourceRoot,
@@ -23,6 +30,9 @@ bool ProcessAssets(
         Extensions[AssetType::Texture] = L"texture";
     }
 
+    SourceRoot = sourceRoot;
+    OutputRoot = outputRoot;
+
     // For each source asset:
     //  1. Compute the final output filename
     //  2. If output file already exists, check timestamp reported in <outputfile>.time
@@ -30,54 +40,12 @@ bool ProcessAssets(
 
     for (int i = 0; i < (int)assets.size(); ++i)
     {
-        const SourceAsset& asset = assets[i];
-
-        Log(L"Processing asset: %s...", asset.Path.c_str());
-            
-        std::wstring assetFilename = sourceRoot + asset.Path;
-        std::wstring outputFilename = outputRoot + ReplaceExtension(asset.Path, Extensions[asset.Type]);
-        bool needsBuild = false;
-        if (!DoesAssetNeedBuilt(assetFilename, outputFilename, &needsBuild))
+        std::wstring outputFilename;
+        if (!BuildAsset(assets[i], outputFilename))
         {
-            LogError(L"Failed to query file information.");
+            LogError(L"Failed processing assets.");
             return false;
         }
-
-        if (!needsBuild)
-        {
-            Log(L"  Content up to date. Skipping.");
-            continue;
-        }
-
-        if (!EnsurePathExists(outputFilename))
-        {
-            LogError(L"Failed to create output file.");
-            return false;
-        }
-
-        // Build asset
-        switch (asset.Type)
-        {
-        case AssetType::Model:
-            if (!BuildModel(assetFilename, outputFilename))
-            {
-                LogError(L"Failed to build asset: %s.", assetFilename.c_str());
-                return false;
-            }
-            break;
-
-        default:
-            LogError(L"Unimplemented.");
-            break;
-        }
-
-        if (!WriteTimeEntry(assetFilename, outputFilename))
-        {
-            LogError(L"Failed to write time data.");
-            return false;
-        }
-
-        Log(L"  Done.");
     }
 
     return true;
@@ -168,9 +136,75 @@ bool DoesAssetNeedBuilt(const std::wstring& assetFilename, const std::wstring& o
     return true;
 }
 
-bool BuildModel(
-    const std::wstring& assetFilename,
-    const std::wstring& outputFilename)
+bool BuildAsset(const SourceAsset& asset, std::wstring& outputRelativePath)
+{
+    Log(L"Processing asset: %s...", asset.Path.c_str());
+
+    std::wstring assetPath = asset.Path;
+    // If asset path already includes SourceRoot, strip it off
+    if (_wcsnicmp(assetPath.c_str(), SourceRoot.c_str(), SourceRoot.size()) == 0)
+    {
+        assetPath = assetPath.substr(SourceRoot.size());
+    }
+
+    std::wstring assetFilename = SourceRoot + assetPath;
+    outputRelativePath = ReplaceExtension(assetPath, Extensions[asset.Type]);
+    std::wstring outputFilename = OutputRoot + outputRelativePath;
+
+    bool needsBuild = false;
+    if (!DoesAssetNeedBuilt(assetFilename, outputFilename, &needsBuild))
+    {
+        LogError(L"Failed to query file information.");
+        return false;
+    }
+
+    if (!needsBuild)
+    {
+        Log(L"  Content up to date. Skipping.");
+        return true;
+    }
+
+    if (!EnsurePathExists(outputFilename))
+    {
+        LogError(L"Failed to create output file.");
+        return false;
+    }
+
+    // Build asset
+    switch (asset.Type)
+    {
+    case AssetType::Model:
+        if (!BuildModel(assetFilename, outputFilename))
+        {
+            LogError(L"Failed to build asset: %s.", assetFilename.c_str());
+            return false;
+        }
+        break;
+
+    case AssetType::Texture:
+        if (!BuildTexture(assetFilename, outputFilename))
+        {
+            LogError(L"Failed to build asset: %s.", assetFilename.c_str());
+            return false;
+        }
+        break;
+
+    default:
+        LogError(L"Unimplemented.");
+        return true;
+    }
+
+    if (!WriteTimeEntry(assetFilename, outputFilename))
+    {
+        LogError(L"Failed to write time data.");
+        return false;
+    }
+
+    Log(L"  Done.");
+    return true;
+}
+
+bool BuildModel(const std::wstring& assetFilename, const std::wstring& outputFilename)
 {
     std::unique_ptr<ObjModel> objModel(new ObjModel);
     if (!objModel)
@@ -187,6 +221,17 @@ bool BuildModel(
     if (!SaveModel(objModel, outputFilename))
     {
         LogError(L"Failed to save model file: %s.", outputFilename.c_str());
+        return false;
+    }
+
+    return true;
+}
+
+bool BuildTexture(const std::wstring& assetFilename, const std::wstring& outputFilename)
+{
+    if (!SaveTexture(assetFilename, outputFilename))
+    {
+        LogError(L"Failed to save texture file: %s.", outputFilename.c_str());
         return false;
     }
 
