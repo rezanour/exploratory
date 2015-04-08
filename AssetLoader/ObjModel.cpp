@@ -123,16 +123,6 @@ bool ObjModel::Load(const wchar_t* filename)
 
         case 'o':   // Object
         case 'g':   // Group
-            if (currentObject && currentPart)
-            {
-                if (currentPart->MinBounds.x < currentObject->MinBounds.x) currentObject->MinBounds.x = currentPart->MinBounds.x;
-                if (currentPart->MinBounds.y < currentObject->MinBounds.y) currentObject->MinBounds.y = currentPart->MinBounds.y;
-                if (currentPart->MinBounds.z < currentObject->MinBounds.z) currentObject->MinBounds.z = currentPart->MinBounds.z;
-                if (currentPart->MaxBounds.x > currentObject->MaxBounds.x) currentObject->MaxBounds.x = currentPart->MaxBounds.x;
-                if (currentPart->MaxBounds.y > currentObject->MaxBounds.y) currentObject->MaxBounds.y = currentPart->MaxBounds.y;
-                if (currentPart->MaxBounds.z > currentObject->MaxBounds.z) currentObject->MaxBounds.z = currentPart->MaxBounds.z;
-            }
-
             // Insert a new object
             Objects.push_back(ObjModelObject());
 
@@ -140,29 +130,17 @@ bool ObjModel::Load(const wchar_t* filename)
             // This pointer is only valid as long as we don't insert or remove anything from this vector.
             currentObject = &Objects[Objects.size() - 1];
             currentObject->Name = (line + 2);
-            currentObject->MinBounds = XMFLOAT3(FLT_MAX, FLT_MAX, FLT_MAX);
-            currentObject->MaxBounds = XMFLOAT3(-FLT_MAX, -FLT_MAX, -FLT_MAX);
             break;
 
         case 'u':
             if (_strnicmp(line, "usemtl", 6) == 0)
             {
-                if (currentPart)
-                {
-                    if (currentPart->MinBounds.x < currentObject->MinBounds.x) currentObject->MinBounds.x = currentPart->MinBounds.x;
-                    if (currentPart->MinBounds.y < currentObject->MinBounds.y) currentObject->MinBounds.y = currentPart->MinBounds.y;
-                    if (currentPart->MinBounds.z < currentObject->MinBounds.z) currentObject->MinBounds.z = currentPart->MinBounds.z;
-                    if (currentPart->MaxBounds.x > currentObject->MaxBounds.x) currentObject->MaxBounds.x = currentPart->MaxBounds.x;
-                    if (currentPart->MaxBounds.y > currentObject->MaxBounds.y) currentObject->MaxBounds.y = currentPart->MaxBounds.y;
-                    if (currentPart->MaxBounds.z > currentObject->MaxBounds.z) currentObject->MaxBounds.z = currentPart->MaxBounds.z;
-                }
-
                 // If we are wrapping up a part, store off bb
                 currentObject->Parts.push_back(ObjModelPart());
                 currentPart = &currentObject->Parts[currentObject->Parts.size() - 1];
                 currentPart->Material = (line + 7);
-                currentPart->MinBounds = XMFLOAT3(FLT_MAX, FLT_MAX, FLT_MAX);
-                currentPart->MaxBounds = XMFLOAT3(-FLT_MAX, -FLT_MAX, -FLT_MAX);
+                currentPart->StartIndex = (uint32_t)Indices.size();
+                currentPart->NumIndices = 0;
             }
             else
             {
@@ -185,50 +163,20 @@ bool ObjModel::Load(const wchar_t* filename)
         }
     }
 
-    if (currentPart)
-    {
-        if (currentPart->MinBounds.x < currentObject->MinBounds.x) currentObject->MinBounds.x = currentPart->MinBounds.x;
-        if (currentPart->MinBounds.y < currentObject->MinBounds.y) currentObject->MinBounds.y = currentPart->MinBounds.y;
-        if (currentPart->MinBounds.z < currentObject->MinBounds.z) currentObject->MinBounds.z = currentPart->MinBounds.z;
-        if (currentPart->MaxBounds.x > currentObject->MaxBounds.x) currentObject->MaxBounds.x = currentPart->MaxBounds.x;
-        if (currentPart->MaxBounds.y > currentObject->MaxBounds.y) currentObject->MaxBounds.y = currentPart->MaxBounds.y;
-        if (currentPart->MaxBounds.z > currentObject->MaxBounds.z) currentObject->MaxBounds.z = currentPart->MaxBounds.z;
-    }
-
     return true;
 }
 
 void ObjModel::ReadPositionAndColor(const char* line)
 {
-    XMFLOAT4 position;
-    XMFLOAT3 color;
-
-    int numFields = sscanf_s(line, "v %f %f %f %f %f %f %f",
-        &position.x, &position.y, &position.z, &position.w,
-        &color.x, &color.y, &color.z);
-
-    if (numFields < 4)
-    {
-        position.w = 1.f;
-    }
-
+    XMFLOAT3 position;
+    sscanf_s(line, "v %f %f %f", &position.x, &position.y, &position.z);
     Positions.push_back(position);
-
-    if (numFields > 4)
-    {
-        Colors.push_back(color);
-    }
 }
 
 void ObjModel::ReadTexCoord(const char* line)
 {
-    XMFLOAT3 value;
-    int numFields = sscanf_s(line, "vt %f %f %f", &value.x, &value.y, &value.z);
-    if (numFields < 3)
-    {
-        value.z = 0.f;
-    }
-
+    XMFLOAT2 value;
+    sscanf_s(line, "vt %f %f", &value.x, &value.y);
     TexCoords.push_back(value);
 }
 
@@ -243,9 +191,11 @@ void ObjModel::ReadFace(char* line, ObjModelPart* part)
 {
     char* context = nullptr;
     char* token = strtok_s(line, " ", &context);
-    int32_t posFirst = -1, posPrev = -1;
-    int32_t texFirst = -1, texPrev = -1;
-    int32_t normFirst = -1, normPrev = -1;
+    uint32_t positionIndex = 0, texIndex = 0, normIndex = 0;
+    uint32_t posFirst = 0, posPrev = 0;
+    uint32_t texFirst = 0, texPrev = 0;
+    uint32_t normFirst = 0, normPrev = 0;
+    uint32_t i = 0;
     while (token)
     {
         if (*token >= '0' && *token <= '9')
@@ -254,81 +204,99 @@ void ObjModel::ReadFace(char* line, ObjModelPart* part)
             char* subToken = strtok_s(token, "/ ", &subContext);
             if (subToken)
             {
-                int32_t positionIndex = atoi(subToken) - 1;
-                const XMFLOAT4& pos = Positions[positionIndex];
-                if (pos.x < part->MinBounds.x) part->MinBounds.x = pos.x;
-                if (pos.y < part->MinBounds.y) part->MinBounds.y = pos.y;
-                if (pos.z < part->MinBounds.z) part->MinBounds.z = pos.z;
-                if (pos.x > part->MaxBounds.x) part->MaxBounds.x = pos.x;
-                if (pos.y > part->MaxBounds.y) part->MaxBounds.y = pos.y;
-                if (pos.z > part->MaxBounds.z) part->MaxBounds.z = pos.z;
-
-                if (posFirst < 0)
-                {
-                    // First point
-                    posFirst = positionIndex;
-                }
-                else if (posPrev == posFirst)
-                {
-                    // Second point
-                }
-                else
-                {
-                    // Third+ points. Add triangle
-                    part->PositionIndices.push_back(posFirst);
-                    part->PositionIndices.push_back(posPrev);
-                    part->PositionIndices.push_back(positionIndex);
-                }
-
-                posPrev = positionIndex;
+                positionIndex = (uint32_t)atoll(subToken);
                 subToken = strtok_s(nullptr, "/ ", &subContext);
             }
             if (subToken)
             {
-                int32_t texIndex = atoi(subToken) - 1;
-                if (texFirst < 0)
-                {
-                    // First point
-                    texFirst = texIndex;
-                }
-                else if (texPrev == texFirst)
-                {
-                    // Second point
-                }
-                else
-                {
-                    // Third+ points. Add triangle
-                    part->TextureIndices.push_back(texFirst);
-                    part->TextureIndices.push_back(texPrev);
-                    part->TextureIndices.push_back(texIndex);
-                }
-
-                texPrev = texIndex;
+                texIndex = (uint32_t)atoll(subToken);
                 subToken = strtok_s(nullptr, "/ ", &subContext);
             }
             if (subToken)
             {
-                int32_t normIndex = atoi(subToken) - 1;
-                if (normFirst < 0)
-                {
-                    // First point
-                    normFirst = normIndex;
-                }
-                else if (normPrev == normFirst)
-                {
-                    // Second point
-                }
-                else
-                {
-                    // Third+ points. Add triangle
-                    part->NormalIndices.push_back(normFirst);
-                    part->NormalIndices.push_back(normPrev);
-                    part->NormalIndices.push_back(normIndex);
-                }
-
-                normPrev = normIndex;
+                normIndex = (uint32_t)atoll(subToken);
                 subToken = strtok_s(nullptr, "/ ", &subContext);
             }
+
+            if (posFirst == 0) posFirst = positionIndex;
+            if (texFirst == 0) texFirst = texIndex;
+            if (normFirst == 0) normFirst = normIndex;
+
+            if (i >= 2)
+            {
+                // Third+ points. Add triangle
+                struct IndexKey { uint32_t vals[3]; };
+
+                IndexKey indexKeys[3] {
+                    { { posFirst, texFirst, normFirst } },
+                    { { posPrev, texPrev, normPrev } },
+                    { { positionIndex, texIndex, normIndex } }
+                };
+
+                XMFLOAT3 normal = XMFLOAT3(0.f, 0.f, 0.f);
+
+                // In case the data doesn't have a normal, compute the triangle one
+                XMVECTOR a = XMLoadFloat3(&Positions[indexKeys[0].vals[0] - 1]);
+                XMVECTOR b = XMLoadFloat3(&Positions[indexKeys[1].vals[0] - 1]);
+                XMVECTOR c = XMLoadFloat3(&Positions[indexKeys[2].vals[0] - 1]);
+                XMVECTOR n = XMVector3Normalize(XMVector3Cross(b - a, c - a));
+                XMStoreFloat3(&normal, n);
+
+                for (auto key : indexKeys)
+                {
+                    bool found = false;
+
+                    uint64_t positionTex = ((uint64_t)key.vals[0] << 32) | key.vals[1];
+                    auto it = IndexMap.find(positionTex);
+                    if (it != IndexMap.end())
+                    {
+                        auto it2 = it->second.find(key.vals[2]);
+                        if (it2 != it->second.end())
+                        {
+                            Indices.push_back(it2->second);
+                            found = true;
+                        }
+                    }
+
+                    if (!found)
+                    {
+                        // Didn't find it, create a new vertex & add
+                        ModelVertex v{};
+                        v.Position = Positions[key.vals[0] - 1];
+                        if (key.vals[2] > 0)
+                        {
+                            XMStoreFloat3(&v.Normal, XMVector3Normalize(XMLoadFloat3(&Normals[key.vals[2] - 1])));
+                        }
+                        else
+                        {
+                            v.Normal = normal;
+                        }
+                        if (key.vals[1] > 0)
+                        {
+                            v.TexCoord = TexCoords[key.vals[1] - 1];
+                        }
+                        Vertices.push_back(v);
+                        Indices.push_back((uint32_t)Vertices.size() - 1);
+
+                        if (it != IndexMap.end())
+                        {
+                            it->second[key.vals[2]] = (uint32_t)Vertices.size() - 1;
+                        }
+                        else
+                        {
+                            IndexMap[positionTex] = std::map<uint32_t, uint32_t>();
+                            IndexMap[positionTex][key.vals[2]] = (uint32_t)Vertices.size() - 1;
+                        }
+                    }
+
+                    ++part->NumIndices;
+                }
+            }
+
+            posPrev = positionIndex;
+            texPrev = texIndex;
+            normPrev = normIndex;
+            ++i;
         }
 
         token = strtok_s(nullptr, " ", &context);

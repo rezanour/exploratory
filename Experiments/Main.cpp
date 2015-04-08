@@ -43,9 +43,8 @@ int WINAPI WinMain(HINSTANCE instance, HINSTANCE, LPSTR, int)
         return -4;
     }
 
-    XMFLOAT3 desiredSize(25.f, 50.f, 25.f);
-    if (!renderer->AddMeshes(L"../ProcessedContent/", L"crytek-sponza/sponza.model", desiredSize))
-    //if (!renderer->AddMeshes(L"../ProcessedContent/sibenik/sibenik.model", desiredSize))
+    if (!renderer->AddMeshes(L"../ProcessedContent/", L"crytek-sponza/sponza.model"))
+    //if (!renderer->AddMeshes(L"../ProcessedContent/", L"sibenik/sibenik.model"))
     {
         assert(false);
         return -5;

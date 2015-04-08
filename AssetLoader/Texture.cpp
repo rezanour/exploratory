@@ -17,7 +17,7 @@ bool SaveTexture(const std::wstring& assetFilename, const std::wstring& outputFi
     DWORD bytesWritten{};
 
     // This function implicitly uses WIC via DirectXTex, so we need COM initialized
-    HRESULT hr = CoInitialize(nullptr);
+    HRESULT hr = CoInitializeEx(nullptr, COINIT_MULTITHREADED);
     if (FAILED(hr))
     {
         LogError(L"Failed to initialize COM.");
@@ -44,15 +44,16 @@ bool SaveTexture(const std::wstring& assetFilename, const std::wstring& outputFi
             }
         }
     }
-    CoUninitialize();
 
     ScratchImage mipChain;
     hr = GenerateMipMaps(image.GetImages(), image.GetImageCount(), metadata, TEX_FILTER_BOX | TEX_FILTER_FORCE_NON_WIC, 0, mipChain);
     if (FAILED(hr))
     {
         LogError(L"Failed to create mips for texture.");
+        CoUninitialize();
         return false;
     }
+    CoUninitialize();
 
     const TexMetadata& mipChainMetadata = mipChain.GetMetadata();
 

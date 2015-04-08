@@ -19,12 +19,14 @@ struct ModelVertex
 
 #pragma pack(1)
 
-// Followed directly by all objects
+// Followed directly by all vertices, then all indices, then all objects
 struct ModelHeader
 {
     static const uint32_t ExpectedSignature = 'MODL';
 
     uint32_t Signature;
+    uint32_t NumVertices;
+    uint32_t NumIndices;
     uint32_t NumObjects;
 };
 
@@ -32,7 +34,6 @@ struct ModelHeader
 struct ModelObject
 {
     char Name[128];
-    XMFLOAT3 MinBounds, MaxBounds;
     uint32_t NumParts;
 };
 
@@ -40,8 +41,8 @@ struct ModelObject
 struct ModelPart
 {
     wchar_t DiffuseTexture[256];
-    XMFLOAT3 MinBounds, MaxBounds;
-    uint32_t NumVertices;
+    uint32_t StartIndex;
+    uint32_t NumIndices;
 };
 
 // MODEL

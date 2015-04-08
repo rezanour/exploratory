@@ -1,5 +1,7 @@
 #pragma once
 
+#include "AssetLoader.h"
+
 struct ObjMaterial
 {
     enum class TextureType
@@ -25,29 +27,21 @@ struct ObjMaterial
 struct ObjModelPart
 {
     std::string Material;
-    XMFLOAT3 MinBounds, MaxBounds;
-
-    // To build triangles, loop through index lists together (if non-empty) and fetch the components
-    // matching by each index, and combine into a vertex
-    std::vector<int32_t> PositionIndices;   // Index list to build triangles from vertices above
-    std::vector<int32_t> TextureIndices;    // Index list to correlate tex coords with triangles above
-    std::vector<int32_t> NormalIndices;     // Index list to correlate normals with triangles.
+    uint32_t StartIndex;
+    uint32_t NumIndices;
 };
 
 struct ObjModelObject
 {
     std::string Name;
-    XMFLOAT3 MinBounds, MaxBounds;
     std::vector<ObjModelPart> Parts;
 };
 
 struct ObjModel
 {
     // Shared by all parts
-    std::vector<XMFLOAT4> Positions;    // x, y, z, [w]. w is optional, defaults to 1
-    std::vector<XMFLOAT3> Colors;
-    std::vector<XMFLOAT3> TexCoords;    // u, v, [w]. w is optional, defaults to 0
-    std::vector<XMFLOAT3> Normals;      // may not be normalized
+    std::vector<ModelVertex> Vertices;
+    std::vector<uint32_t> Indices;
 
     std::vector<ObjMaterial> Materials;
     std::vector<ObjModelObject> Objects;
@@ -55,6 +49,12 @@ struct ObjModel
     bool Load(const wchar_t* filename);
 
 private:
+    std::vector<XMFLOAT3> Positions;    // x, y, z
+    std::vector<XMFLOAT3> Normals;      // may not be normalized
+    std::vector<XMFLOAT2> TexCoords;    // u, v
+
+    std::map<uint64_t, std::map<uint32_t, uint32_t>> IndexMap;
+
     bool LoadMaterials(const wchar_t* filename);
 
     void ReadPositionAndColor(const char* line);

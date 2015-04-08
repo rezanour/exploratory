@@ -26,7 +26,7 @@ TestRenderer::~TestRenderer()
 {
 }
 
-bool TestRenderer::AddMeshes(const std::wstring& contentRoot, const std::wstring& modelFilename, const XMFLOAT3& desiredSize)
+bool TestRenderer::AddMeshes(const std::wstring& contentRoot, const std::wstring& modelFilename)
 {
     static_assert(sizeof(ModelVertex) == sizeof(Vertex), "Make sure structures (and padding) match so we can read directly!");
 
@@ -37,8 +37,6 @@ bool TestRenderer::AddMeshes(const std::wstring& contentRoot, const std::wstring
         LogError(L"Failed to open asset file.");
         return false;
     }
-
-    std::vector<Vertex> vertices;
 
     DWORD bytesRead{};
     ModelHeader header{};
@@ -54,8 +52,65 @@ bool TestRenderer::AddMeshes(const std::wstring& contentRoot, const std::wstring
         return false;
     }
 
-    XMFLOAT4X4 worldMatrix{};
+    TheScene.reset(new Scene);
 
+    TheScene->VertexCount = header.NumVertices;
+    TheScene->IndexCount = header.NumIndices;
+
+    std::unique_ptr<Vertex[]> vertices(new Vertex[header.NumVertices]);
+    if (!ReadFile(modelFile.Get(), vertices.get(), header.NumVertices * sizeof(Vertex), &bytesRead, nullptr))
+    {
+        LogError(L"Failed to read file.");
+        return false;
+    }
+
+    D3D11_BUFFER_DESC bd {};
+    bd.BindFlags = D3D11_BIND_VERTEX_BUFFER;
+    bd.ByteWidth = sizeof(Vertex) * header.NumVertices;
+    bd.StructureByteStride = sizeof(Vertex);
+    bd.Usage = D3D11_USAGE_DEFAULT;
+
+    D3D11_SUBRESOURCE_DATA init{};
+    init.pSysMem = vertices.get();
+    init.SysMemPitch = bd.ByteWidth;
+    init.SysMemSlicePitch = init.SysMemPitch;
+
+    HRESULT hr = Device->CreateBuffer(&bd, &init, &TheScene->VertexBuffer);
+    if (FAILED(hr))
+    {
+        LogError(L"Failed to read file.");
+        return false;
+    }
+
+    // Free up memory
+    vertices.reset();
+
+    std::unique_ptr<uint32_t[]> indices(new uint32_t[header.NumIndices]);
+    if (!ReadFile(modelFile.Get(), indices.get(), header.NumIndices * sizeof(uint32_t), &bytesRead, nullptr))
+    {
+        LogError(L"Failed to read file.");
+        return false;
+    }
+
+    bd.BindFlags = D3D11_BIND_INDEX_BUFFER;
+    bd.ByteWidth = sizeof(uint32_t) * header.NumIndices;
+    bd.StructureByteStride = sizeof(uint32_t);
+
+    init.pSysMem = indices.get();
+    init.SysMemPitch = bd.ByteWidth;
+    init.SysMemSlicePitch = init.SysMemPitch;
+
+    hr = Device->CreateBuffer(&bd, &init, &TheScene->IndexBuffer);
+    if (FAILED(hr))
+    {
+        LogError(L"Failed to read file.");
+        return false;
+    }
+
+    // Free up memory
+    indices.reset();
+
+    // Load objects
     for (int iObj = 0; iObj < (int)header.NumObjects; ++iObj)
     {
         ModelObject object{};
@@ -65,18 +120,9 @@ bool TestRenderer::AddMeshes(const std::wstring& contentRoot, const std::wstring
             return false;
         }
 
-        // Determine scale based on first object
-        if (iObj == 0)
-        {
-            XMFLOAT3 size = XMFLOAT3(
-                object.MaxBounds.x - object.MinBounds.x,
-                object.MaxBounds.y - object.MinBounds.y,
-                object.MaxBounds.z - object.MinBounds.z);
-
-            XMFLOAT3 scales = XMFLOAT3(desiredSize.x / size.x, desiredSize.y / size.y, desiredSize.z / size.z);
-
-            XMStoreFloat4x4(&worldMatrix, XMMatrixScaling(scales.x, scales.y, scales.z));
-        }
+        std::shared_ptr<Object> obj = std::make_shared<Object>();
+        obj->Name = object.Name;
+        XMStoreFloat4x4(&obj->World, XMMatrixIdentity());
 
         for (int iPart = 0; iPart < (int)object.NumParts; ++iPart)
         {
@@ -87,125 +133,23 @@ bool TestRenderer::AddMeshes(const std::wstring& contentRoot, const std::wstring
                 return false;
             }
 
-            if (part.NumVertices > vertices.size())
-            {
-                vertices.resize(part.NumVertices);
-            }
-            if (!ReadFile(modelFile.Get(), vertices.data(), sizeof(Vertex) * part.NumVertices, &bytesRead, nullptr))
-            {
-                LogError(L"Failed to read file.");
-                return false;
-            }
-
-            std::shared_ptr<Mesh> mesh = std::make_shared<Mesh>();
-            mesh->World = worldMatrix;
-            mesh->VertexCount = (int)part.NumVertices;
-
-            D3D11_BUFFER_DESC bd = {};
-            bd.BindFlags = D3D11_BIND_VERTEX_BUFFER;
-            bd.ByteWidth = sizeof(Vertex) * mesh->VertexCount;
-            bd.StructureByteStride = sizeof(Vertex);
-            bd.Usage = D3D11_USAGE_DEFAULT;
-
-            D3D11_SUBRESOURCE_DATA init = {};
-            init.pSysMem = vertices.data();
-            init.SysMemPitch = bd.ByteWidth;
-            init.SysMemSlicePitch = init.SysMemPitch;
-
-            HRESULT hr = Device->CreateBuffer(&bd, &init, &mesh->VertexBuffer);
-            if (FAILED(hr))
-            {
-                LogError(L"Failed to create vertex buffer.");
-                return false;
-            }
+            Mesh mesh{};
+            mesh.StartIndex = part.StartIndex;
+            mesh.NumIndices = part.NumIndices;
 
             if (part.DiffuseTexture[0] != 0)
             {
-                FileHandle texFile(CreateFile((contentRoot + part.DiffuseTexture).c_str(), GENERIC_READ,
-                    FILE_SHARE_READ, nullptr, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr));
-                if (!texFile.IsValid())
+                if (!LoadTexture(contentRoot + part.DiffuseTexture, &mesh.SRV))
                 {
-                    LogError(L"Failed to open texture.");
-                    return false;
-                }
-
-                uint32_t fileSize = GetFileSize(texFile.Get(), nullptr);
-
-                TextureHeader texHeader{};
-                if (!ReadFile(texFile.Get(), &texHeader, sizeof(texHeader), &bytesRead, nullptr))
-                {
-                    LogError(L"Failed to read texture.");
-                    return false;
-                }
-
-                if (texHeader.Signature != TextureHeader::ExpectedSignature)
-                {
-                    LogError(L"Invalid texture file.");
-                    return false;
-                }
-
-                uint32_t pixelDataSize = fileSize - sizeof(TextureHeader);
-                std::unique_ptr<uint8_t[]> pixelData(new uint8_t[pixelDataSize]);
-                if (!ReadFile(texFile.Get(), pixelData.get(), pixelDataSize, &bytesRead, nullptr))
-                {
-                    LogError(L"Failed to read texture data.");
-                    return false;
-                }
-
-                D3D11_TEXTURE2D_DESC td{};
-                td.ArraySize = texHeader.ArrayCount;
-                td.Format = texHeader.Format;
-                td.Width = texHeader.Width;
-                td.Height = texHeader.Height;
-                td.MipLevels = texHeader.MipLevels;
-                td.BindFlags = D3D11_BIND_SHADER_RESOURCE;
-                td.SampleDesc.Count = 1;
-                td.Usage = D3D11_USAGE_DEFAULT;
-
-                D3D11_SUBRESOURCE_DATA init[20] {};
-                uint32_t width = td.Width;
-                uint32_t height = td.Height;
-                uint32_t bpp = (uint32_t)BitsPerPixel(td.Format) / 8;
-                uint8_t* pPixels = pixelData.get();
-                for (int m = 0; m < (int)td.MipLevels; ++m)
-                {
-                    init[m].pSysMem = pPixels;
-                    init[m].SysMemPitch = width * bpp;
-                    init[m].SysMemSlicePitch = width * height * bpp;
-
-                    width >>= 1;
-                    height >>= 1;
-                    pPixels += init[m].SysMemSlicePitch;
-                }
-                ComPtr<ID3D11Texture2D> texture;
-                HRESULT hr = Device->CreateTexture2D(&td, init, &texture);
-                if (FAILED(hr))
-                {
-                    // Try without mips
-                    td.MipLevels = 1;
-
-                    init[0].pSysMem = pixelData.get();
-                    init[0].SysMemPitch = td.Width * bpp;
-                    init[0].SysMemSlicePitch = td.Width * td.Height * bpp;
-
-                    hr = Device->CreateTexture2D(&td, init, &texture);
-                    if (FAILED(hr))
-                    {
-                        LogError(L"Failed to create texture.");
-                        return false;
-                    }
-                }
-
-                hr = Device->CreateShaderResourceView(texture.Get(), nullptr, &mesh->SRV);
-                if (FAILED(hr))
-                {
-                    LogError(L"Failed to create texture SRV.");
+                    LogError(L"Failed to load texture.");
                     return false;
                 }
             }
 
-            Meshes.push_back(mesh);
+            obj->Meshes.push_back(mesh);
         }
+
+        TheScene->Objects.push_back(obj);
     }
 
     return true;
@@ -215,13 +159,16 @@ bool TestRenderer::Render(FXMMATRIX view, FXMMATRIX projection, bool vsync)
 {
     Clear();
 
+    static const uint32_t stride = sizeof(Vertex);
+    static const uint32_t offset = 0;
+
     D3D11_MAPPED_SUBRESOURCE mapped{};
 
-    for (int i = 0; i < (int)Meshes.size(); ++i)
+    Context->IASetVertexBuffers(0, 1, TheScene->VertexBuffer.GetAddressOf(), &stride, &offset);
+    Context->IASetIndexBuffer(TheScene->IndexBuffer.Get(), DXGI_FORMAT_R32_UINT, 0);
+    
+    for (auto& object : TheScene->Objects)
     {
-        static const uint32_t stride = sizeof(Vertex);
-        static const uint32_t offset = 0;
-
         if (FAILED(Context->Map(ConstantBuffer.Get(), 0, D3D11_MAP_WRITE_DISCARD, 0, &mapped)))
         {
             LogError(L"Failed to map constant buffer.");
@@ -229,13 +176,15 @@ bool TestRenderer::Render(FXMMATRIX view, FXMMATRIX projection, bool vsync)
 
         Constants* constants = (Constants*)mapped.pData;
         XMStoreFloat4x4(&constants->ViewProjection, view * projection);
-        constants->World = Meshes[i]->World;
+        constants->World = object->World;
 
         Context->Unmap(ConstantBuffer.Get(), 0);
 
-        Context->IASetVertexBuffers(0, 1, Meshes[i]->VertexBuffer.GetAddressOf(), &stride, &offset);
-        Context->PSSetShaderResources(0, 1, Meshes[i]->SRV.GetAddressOf());
-        Context->Draw(Meshes[i]->VertexCount, 0);
+        for (auto& mesh : object->Meshes)
+        {
+            Context->PSSetShaderResources(0, 1, mesh.SRV.GetAddressOf());
+            Context->DrawIndexed(mesh.NumIndices, mesh.StartIndex, 0);
+        }
     }
 
     return Present(vsync);
@@ -422,6 +371,94 @@ bool TestRenderer::Initialize()
     Context->PSSetSamplers(0, 1, Sampler.GetAddressOf());
     Context->RSSetState(RasterizerState.Get());
     Context->RSSetViewports(1, &vp);
+
+    return true;
+}
+
+bool TestRenderer::LoadTexture(const std::wstring& filename, ID3D11ShaderResourceView** srv)
+{
+    FileHandle texFile(CreateFile(filename.c_str(), GENERIC_READ,
+        FILE_SHARE_READ, nullptr, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr));
+    if (!texFile.IsValid())
+    {
+        LogError(L"Failed to open texture.");
+        return false;
+    }
+
+    DWORD bytesRead{};
+    uint32_t fileSize = GetFileSize(texFile.Get(), nullptr);
+
+    TextureHeader texHeader{};
+    if (!ReadFile(texFile.Get(), &texHeader, sizeof(texHeader), &bytesRead, nullptr))
+    {
+        LogError(L"Failed to read texture.");
+        return false;
+    }
+
+    if (texHeader.Signature != TextureHeader::ExpectedSignature)
+    {
+        LogError(L"Invalid texture file.");
+        return false;
+    }
+
+    uint32_t pixelDataSize = fileSize - sizeof(TextureHeader);
+    std::unique_ptr<uint8_t[]> pixelData(new uint8_t[pixelDataSize]);
+    if (!ReadFile(texFile.Get(), pixelData.get(), pixelDataSize, &bytesRead, nullptr))
+    {
+        LogError(L"Failed to read texture data.");
+        return false;
+    }
+
+    D3D11_TEXTURE2D_DESC td{};
+    td.ArraySize = texHeader.ArrayCount;
+    td.Format = texHeader.Format;
+    td.Width = texHeader.Width;
+    td.Height = texHeader.Height;
+    td.MipLevels = texHeader.MipLevels;
+    td.BindFlags = D3D11_BIND_SHADER_RESOURCE;
+    td.SampleDesc.Count = 1;
+    td.Usage = D3D11_USAGE_DEFAULT;
+
+    D3D11_SUBRESOURCE_DATA init[20] {};
+    uint32_t width = td.Width;
+    uint32_t height = td.Height;
+    uint32_t bpp = (uint32_t)BitsPerPixel(td.Format) / 8;
+    uint8_t* pPixels = pixelData.get();
+    for (int m = 0; m < (int)td.MipLevels; ++m)
+    {
+        init[m].pSysMem = pPixels;
+        init[m].SysMemPitch = width * bpp;
+        init[m].SysMemSlicePitch = width * height * bpp;
+
+        width >>= 1;
+        height >>= 1;
+        pPixels += init[m].SysMemSlicePitch;
+    }
+    ComPtr<ID3D11Texture2D> texture;
+    HRESULT hr = Device->CreateTexture2D(&td, init, &texture);
+    if (FAILED(hr))
+    {
+        // Try without mips
+        td.MipLevels = 1;
+
+        init[0].pSysMem = pixelData.get();
+        init[0].SysMemPitch = td.Width * bpp;
+        init[0].SysMemSlicePitch = td.Width * td.Height * bpp;
+
+        hr = Device->CreateTexture2D(&td, init, &texture);
+        if (FAILED(hr))
+        {
+            LogError(L"Failed to create texture.");
+            return false;
+        }
+    }
+
+    hr = Device->CreateShaderResourceView(texture.Get(), nullptr, srv);
+    if (FAILED(hr))
+    {
+        LogError(L"Failed to create texture SRV.");
+        return false;
+    }
 
     return true;
 }
