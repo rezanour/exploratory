@@ -41,13 +41,31 @@ class TestRenderer
         std::vector<std::shared_ptr<Object>> Objects;
     };
 
+    static const uint32_t MAX_LIGHTS = 8;
+
+    struct Light
+    {
+        XMFLOAT3 Direction;
+        float Pad0;
+        XMFLOAT3 Color;
+        float Pad1;
+    };
+
+    struct LightConstants
+    {
+        Light Lights[MAX_LIGHTS];
+        XMFLOAT3 EyePosition;
+        int NumLights;
+    };
+
+
 public:
     static std::unique_ptr<TestRenderer> Create(HWND window);
     ~TestRenderer();
 
     bool AddMeshes(const std::wstring& contentRoot, const std::wstring& modelFilename);
 
-    bool Render(FXMMATRIX view, FXMMATRIX projection, bool vsync);
+    bool Render(FXMVECTOR cameraPosition, FXMMATRIX view, FXMMATRIX projection, bool vsync);
 
 private:
     TestRenderer(HWND window);
@@ -69,10 +87,12 @@ private:
     ComPtr<ID3D11DepthStencilView> DepthBuffer;
     ComPtr<ID3D11InputLayout> InputLayout;
     ComPtr<ID3D11Buffer> ConstantBuffer;
+    ComPtr<ID3D11Buffer> LightsConstantBuffer;
     ComPtr<ID3D11VertexShader> VertexShader;
     ComPtr<ID3D11PixelShader> PixelShader;
     ComPtr<ID3D11RasterizerState> RasterizerState;
     ComPtr<ID3D11SamplerState> Sampler;
 
     std::shared_ptr<Scene> TheScene;
+    LightConstants LightData;
 };

@@ -155,7 +155,7 @@ bool TestRenderer::AddMeshes(const std::wstring& contentRoot, const std::wstring
     return true;
 }
 
-bool TestRenderer::Render(FXMMATRIX view, FXMMATRIX projection, bool vsync)
+bool TestRenderer::Render(FXMVECTOR cameraPosition, FXMMATRIX view, FXMMATRIX projection, bool vsync)
 {
     Clear();
 
@@ -166,6 +166,15 @@ bool TestRenderer::Render(FXMMATRIX view, FXMMATRIX projection, bool vsync)
 
     Context->IASetVertexBuffers(0, 1, TheScene->VertexBuffer.GetAddressOf(), &stride, &offset);
     Context->IASetIndexBuffer(TheScene->IndexBuffer.Get(), DXGI_FORMAT_R32_UINT, 0);
+
+    XMStoreFloat3(&LightData.EyePosition, cameraPosition);
+    LightData.NumLights = 2;
+    LightData.Lights[0].Direction = XMFLOAT3(1.f, 1.f, 1.f);
+    LightData.Lights[0].Color = XMFLOAT3(0.6f, 0.6f, 0.6f);
+    LightData.Lights[1].Direction = XMFLOAT3(-1.f, 1.f, -1.f);
+    LightData.Lights[1].Color = XMFLOAT3(0.5f, 0.5f, 0.4f);
+
+    Context->UpdateSubresource(LightsConstantBuffer.Get(), 0, nullptr, &LightData, sizeof(LightData), 0);
     
     for (auto& object : TheScene->Objects)
     {
@@ -236,7 +245,7 @@ bool TestRenderer::Initialize()
     scd.BufferCount = 2;
     scd.BufferUsage = DXGI_USAGE_RENDER_TARGET_OUTPUT;
     scd.BufferDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
-    scd.SampleDesc.Count = 1;
+    scd.SampleDesc.Count = 4;
     scd.OutputWindow = Window;
     scd.Windowed = TRUE;
 
@@ -325,6 +334,18 @@ bool TestRenderer::Initialize()
         return false;
     }
 
+    bd.ByteWidth = sizeof(LightConstants);
+    bd.StructureByteStride = bd.ByteWidth;
+    bd.Usage = D3D11_USAGE_DEFAULT;
+    bd.CPUAccessFlags = 0;
+
+    hr = Device->CreateBuffer(&bd, nullptr, &LightsConstantBuffer);
+    if (FAILED(hr))
+    {
+        LogError(L"Failed to create constant buffer.");
+        return false;
+    }
+
     D3D11_SAMPLER_DESC sd = {};
     sd.AddressU = D3D11_TEXTURE_ADDRESS_WRAP;
     sd.AddressV = D3D11_TEXTURE_ADDRESS_WRAP;
@@ -369,6 +390,7 @@ bool TestRenderer::Initialize()
     Context->PSSetShader(PixelShader.Get(), nullptr, 0);
     Context->VSSetConstantBuffers(0, 1, ConstantBuffer.GetAddressOf());
     Context->PSSetSamplers(0, 1, Sampler.GetAddressOf());
+    Context->PSSetConstantBuffers(0, 1, LightsConstantBuffer.GetAddressOf());
     Context->RSSetState(RasterizerState.Get());
     Context->RSSetViewports(1, &vp);
 
@@ -420,25 +442,33 @@ bool TestRenderer::LoadTexture(const std::wstring& filename, ID3D11ShaderResourc
     td.Usage = D3D11_USAGE_DEFAULT;
 
     D3D11_SUBRESOURCE_DATA init[20] {};
-    uint32_t width = td.Width;
-    uint32_t height = td.Height;
     uint32_t bpp = (uint32_t)BitsPerPixel(td.Format) / 8;
-    uint8_t* pPixels = pixelData.get();
-    for (int m = 0; m < (int)td.MipLevels; ++m)
-    {
-        init[m].pSysMem = pPixels;
-        init[m].SysMemPitch = width * bpp;
-        init[m].SysMemSlicePitch = width * height * bpp;
 
-        width >>= 1;
-        height >>= 1;
-        pPixels += init[m].SysMemSlicePitch;
-    }
     ComPtr<ID3D11Texture2D> texture;
-    HRESULT hr = Device->CreateTexture2D(&td, init, &texture);
-    if (FAILED(hr))
+    HRESULT hr = S_OK;
+
+    // Only try to use mips if width & height are the same size
+    if (td.Width == td.Height)
     {
-        // Try without mips
+        uint32_t width = td.Width;
+        uint32_t height = td.Height;
+        uint8_t* pPixels = pixelData.get();
+
+        for (int m = 0; m < (int)td.MipLevels; ++m)
+        {
+            init[m].pSysMem = pPixels;
+            init[m].SysMemPitch = width * bpp;
+            init[m].SysMemSlicePitch = width * height * bpp;
+
+            width >>= 1;
+            height >>= 1;
+            pPixels += init[m].SysMemSlicePitch;
+        }
+
+        hr = Device->CreateTexture2D(&td, init, &texture);
+    }
+    else
+    {
         td.MipLevels = 1;
 
         init[0].pSysMem = pixelData.get();
@@ -446,11 +476,11 @@ bool TestRenderer::LoadTexture(const std::wstring& filename, ID3D11ShaderResourc
         init[0].SysMemSlicePitch = td.Width * td.Height * bpp;
 
         hr = Device->CreateTexture2D(&td, init, &texture);
-        if (FAILED(hr))
-        {
-            LogError(L"Failed to create texture.");
-            return false;
-        }
+    }
+    if (FAILED(hr))
+    {
+        LogError(L"Failed to create texture.");
+        return false;
     }
 
     hr = Device->CreateShaderResourceView(texture.Get(), nullptr, srv);

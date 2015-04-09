@@ -183,7 +183,7 @@ int WINAPI WinMain(HINSTANCE instance, HINSTANCE, LPSTR, int)
             up = XMVector3TransformNormal(XMVectorSet(0.f, 1.f, 0.f, 0.f), XMMatrixRotationAxis(right, pitch));
             forward = XMVector3Cross(up, right);
 
-            renderer->Render(XMMatrixLookToRH(position, forward, up), projection, VSyncEnabled);
+            renderer->Render(position, XMMatrixLookToRH(position, forward, up), projection, VSyncEnabled);
 
             swprintf_s(caption, L"%s (%dx%d) - FPS: %3.2f", ClassName, ScreenWidth, ScreenHeight, frameRate);
             SetWindowText(Window, caption);
