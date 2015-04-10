@@ -3,6 +3,7 @@
 #include "Debug.h"
 #include "StringHelpers.h"
 #include "AssetLoader.h"
+#include <wincodec.h>
 
 bool SaveTexture(const std::wstring& assetFilename, const std::wstring& outputFilename)
 {
@@ -16,18 +17,10 @@ bool SaveTexture(const std::wstring& assetFilename, const std::wstring& outputFi
 
     DWORD bytesWritten{};
 
-    // This function implicitly uses WIC via DirectXTex, so we need COM initialized
-    HRESULT hr = CoInitializeEx(nullptr, COINIT_MULTITHREADED);
-    if (FAILED(hr))
-    {
-        LogError(L"Failed to initialize COM.");
-        return false;
-    }
-
     TexMetadata metadata;
     ScratchImage image;
     // Try for DDS first
-    hr = LoadFromDDSFile(assetFilename.c_str(), DDS_FLAGS_NONE, &metadata, image);
+    HRESULT hr = LoadFromDDSFile(assetFilename.c_str(), DDS_FLAGS_NONE, &metadata, image);
     if (FAILED(hr))
     {
         // No? then try TGA
@@ -39,7 +32,6 @@ bool SaveTexture(const std::wstring& assetFilename, const std::wstring& outputFi
             if (FAILED(hr))
             {
                 LogError(L"Failed to load texture image.");
-                CoUninitialize();
                 return false;
             }
         }
@@ -50,10 +42,8 @@ bool SaveTexture(const std::wstring& assetFilename, const std::wstring& outputFi
     if (FAILED(hr))
     {
         LogError(L"Failed to create mips for texture.");
-        CoUninitialize();
         return false;
     }
-    CoUninitialize();
 
     const TexMetadata& mipChainMetadata = mipChain.GetMetadata();
 
@@ -74,6 +64,46 @@ bool SaveTexture(const std::wstring& assetFilename, const std::wstring& outputFi
     if (!WriteFile(outputFile.Get(), mipChain.GetPixels(), (uint32_t)mipChain.GetPixelsSize(), &bytesWritten, nullptr))
     {
         LogError(L"Error writing output file.");
+        return false;
+    }
+
+    return true;
+}
+
+bool ConvertToBumpMapToNormalMap(const std::wstring& bumpFilename, const std::wstring& outputFilename)
+{
+    TexMetadata metadata;
+    ScratchImage image;
+    // Try for DDS first
+    HRESULT hr = LoadFromDDSFile(bumpFilename.c_str(), DDS_FLAGS_NONE, &metadata, image);
+    if (FAILED(hr))
+    {
+        // No? then try TGA
+        hr = LoadFromTGAFile(bumpFilename.c_str(), &metadata, image);
+        if (FAILED(hr))
+        {
+            // Boo, use WIC as the catch-all
+            hr = LoadFromWICFile(bumpFilename.c_str(), WIC_FLAGS_NONE, &metadata, image);
+            if (FAILED(hr))
+            {
+                LogError(L"Failed to load texture image.");
+                return false;
+            }
+        }
+    }
+
+    ScratchImage normalMap;
+    hr = ComputeNormalMap(image.GetImages(), image.GetImageCount(), metadata, CNMAP_CHANNEL_RED, 10.f, DXGI_FORMAT_R8G8B8A8_UNORM, normalMap);
+    if (FAILED(hr))
+    {
+        LogError(L"Failed to generate normal map.");
+        return false;
+    }
+
+    hr = SaveToWICFile(normalMap.GetImages(), normalMap.GetImageCount(), 0, GUID_ContainerFormatPng, outputFilename.c_str());
+    if (FAILED(hr))
+    {
+        LogError(L"Failed to generate normal map.");
         return false;
     }
 

@@ -11,6 +11,14 @@ static bool ReadConfig(
 
 int wmain(int argc, wchar_t* argv[])
 {
+    // WIC is used in various parts of DirectXTex, and needs COM to be initialized
+    HRESULT hr = CoInitializeEx(nullptr, COINIT_MULTITHREADED);
+    if (FAILED(hr))
+    {
+        LogError(L"Failed to initialize COM.");
+        return -1;
+    }
+
     std::wstring configFilename(L"AssetLoader.cfg");    // Default config file
 
     // Check if an override file was specified on command line
@@ -20,7 +28,8 @@ int wmain(int argc, wchar_t* argv[])
         if (GetFileAttributes(argv[1]) == INVALID_FILE_ATTRIBUTES)
         {
             LogError(L"Config file %s doesn't exist.", argv[1]);
-            return -1;
+            CoUninitialize();
+            return -2;
         }
 
         configFilename = argv[1];
@@ -33,7 +42,8 @@ int wmain(int argc, wchar_t* argv[])
     if (!ReadConfig(configFilename, sourceRoot, outputRoot, assets))
     {
         LogError(L"Failed to load config file: %s.", configFilename.c_str());
-        return -2;
+        CoUninitialize();
+        return -3;
     }
 
     // Make sure both roots are standardized on / and also end in /
@@ -44,6 +54,8 @@ int wmain(int argc, wchar_t* argv[])
 
     // Process assets
     ProcessAssets(sourceRoot, outputRoot, assets);
+
+    CoUninitialize();
 
     return 0;
 }

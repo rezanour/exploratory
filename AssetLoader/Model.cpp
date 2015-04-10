@@ -5,7 +5,7 @@
 #include "StringHelpers.h"
 #include "AssetLoader.h"
 
-static std::wstring FindDiffuseTexture(const std::unique_ptr<ObjModel>& model, const std::string& materialName)
+static std::wstring FindTexture(const std::unique_ptr<ObjModel>& model, const std::string& materialName, ObjMaterial::TextureType textureType)
 {
     std::wstring texture;
 
@@ -13,7 +13,7 @@ static std::wstring FindDiffuseTexture(const std::unique_ptr<ObjModel>& model, c
     {
         if (model->Materials[i].Name == materialName)
         {
-            auto it = model->Materials[i].TextureMaps.find(ObjMaterial::TextureType::Diffuse);
+            auto it = model->Materials[i].TextureMaps.find(textureType);
             if (it != model->Materials[i].TextureMaps.end())
             {
                 texture = it->second;
@@ -84,18 +84,44 @@ bool SaveModel(const std::unique_ptr<ObjModel>& objModel, const std::wstring& ou
             const ObjModelPart& srcPart = srcObject.Parts[iPart];
 
             ModelPart part{};
-            std::wstring diffuseTexture = FindDiffuseTexture(objModel, srcPart.Material);
+            std::wstring textureName = FindTexture(objModel, srcPart.Material, ObjMaterial::TextureType::Diffuse);
 
-            if (!diffuseTexture.empty())
+            if (!textureName.empty())
             {
-                if (!BuildAsset(SourceAsset(AssetType::Texture, std::move(diffuseTexture)), diffuseTexture))
+                if (!BuildAsset(SourceAsset(AssetType::Texture, std::move(textureName)), textureName))
                 {
                     LogError(L"Error writing output file.");
                     return false;
                 }
             }
+            wcscpy_s(part.DiffuseTexture, textureName.c_str());
 
-            wcscpy_s(part.DiffuseTexture, diffuseTexture.c_str());
+            textureName = FindTexture(objModel, srcPart.Material, ObjMaterial::TextureType::Bump);
+
+            if (!textureName.empty())
+            {
+                std::wstring bumpName = textureName;
+                textureName = bumpName + L".normal";
+                SourceAsset asset(AssetType::Texture, std::move(textureName));
+
+                bool needsBuild = false;
+                if (!DoesAssetNeedBuilt(asset, &needsBuild) || needsBuild)
+                {
+                    if (!ConvertToBumpMapToNormalMap(bumpName, asset.Path))
+                    {
+                        LogError(L"Error processing bump map.");
+                        return false;
+                    }
+
+                    if (!BuildAsset(asset, textureName))
+                    {
+                        LogError(L"Error writing output file.");
+                        return false;
+                    }
+                }
+            }
+            wcscpy_s(part.NormalTexture, textureName.c_str());
+
             part.StartIndex = srcPart.StartIndex;
             part.NumIndices = srcPart.NumIndices;
 

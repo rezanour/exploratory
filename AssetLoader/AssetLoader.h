@@ -14,6 +14,8 @@ struct ModelVertex
 {
     XMFLOAT3 Position;
     XMFLOAT3 Normal;
+    XMFLOAT3 Tangent;
+    XMFLOAT3 BiTangent;
     XMFLOAT2 TexCoord;
 };
 
@@ -41,6 +43,7 @@ struct ModelObject
 struct ModelPart
 {
     wchar_t DiffuseTexture[256];
+    wchar_t NormalTexture[256];
     uint32_t StartIndex;
     uint32_t NumIndices;
 };

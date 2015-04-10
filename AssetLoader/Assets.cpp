@@ -12,7 +12,6 @@ static std::wstring OutputRoot;
 // Ensures that all subdirectories up to the file exist
 static bool EnsurePathExists(const std::wstring& path);
 static bool DoesAssetNeedBuilt(const std::wstring& assetFilename, const std::wstring& outputFilename, bool* needsBuild);
-static bool WriteTimeEntry(const std::wstring& assetFilename, const std::wstring& outputFilename);
 
 static bool BuildModel(const std::wstring& assetFilename, const std::wstring& outputFilename);
 static bool BuildTexture(const std::wstring& assetFilename, const std::wstring& outputFilename);
@@ -80,6 +79,13 @@ bool EnsurePathExists(const std::wstring& path)
     return true;
 }
 
+bool DoesAssetNeedBuilt(const SourceAsset& asset, bool* needsBuild)
+{
+    std::wstring assetFilename = SourceRoot + asset.Path;
+    std::wstring outputFilename = OutputRoot + ReplaceExtension(asset.Path, Extensions[asset.Type]);
+    return DoesAssetNeedBuilt(assetFilename, outputFilename, needsBuild);
+}
+
 bool DoesAssetNeedBuilt(const std::wstring& assetFilename, const std::wstring& outputFilename, bool* needsBuild)
 {
     // By default, needs to be built.
@@ -87,49 +93,42 @@ bool DoesAssetNeedBuilt(const std::wstring& assetFilename, const std::wstring& o
 
     if (GetFileAttributes(outputFilename.c_str()) != INVALID_FILE_ATTRIBUTES)
     {
-        // File exists, check for .time data
-        std::wstring timeFilename = outputFilename + L".time";
-        FileHandle timeFile(CreateFile(timeFilename.c_str(), GENERIC_READ, FILE_SHARE_READ, nullptr,
-            OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr));
-        if (timeFile.IsValid())
+        // File exists, is source asset last modified time newer than built content?
+        FileHandle outputFile(CreateFile(outputFilename.c_str(), GENERIC_READ,
+            FILE_SHARE_READ, nullptr, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr));
+        if (!outputFile.IsValid())
         {
-            // Time file exists
-            DWORD fileSize = GetFileSize(timeFile.Get(), nullptr);
-            if (fileSize < sizeof(FILETIME))
-            {
-                LogError(L"Invalid time file: %s.", timeFilename.c_str());
-                return false;
-            }
+            LogError(L"Failed to access file: %s.", outputFilename.c_str());
+            return false;
+        }
 
-            FILETIME loggedLastWriteTime{};
-            DWORD bytesRead{};
-            if (!ReadFile(timeFile.Get(), &loggedLastWriteTime, sizeof(loggedLastWriteTime), &bytesRead, nullptr))
-            {
-                LogError(L"Failed to read time file: %s.", timeFilename.c_str());
-                return false;
-            }
+        FILETIME contentLastWriteTime{};
+        if (!GetFileTime(outputFile.Get(), nullptr, nullptr, &contentLastWriteTime))
+        {
+            LogError(L"Failed to get file timestamp info: %s.", outputFilename.c_str());
+            return false;
+        }
 
-            // Get source asset last modified time
-            FileHandle sourceFile(CreateFile(assetFilename.c_str(), GENERIC_READ,
-                FILE_SHARE_READ, nullptr, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr));
-            if (!sourceFile.IsValid())
-            {
-                LogError(L"Failed to open source asset: %s.", assetFilename.c_str());
-                return false;
-            }
+        // Get source asset last modified time
+        FileHandle sourceFile(CreateFile(assetFilename.c_str(), GENERIC_READ,
+            FILE_SHARE_READ, nullptr, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr));
+        if (!sourceFile.IsValid())
+        {
+            LogError(L"Failed to open source asset: %s.", assetFilename.c_str());
+            return false;
+        }
 
-            FILETIME lastWriteTime{};
-            if (!GetFileTime(sourceFile.Get(), nullptr, nullptr, &lastWriteTime))
-            {
-                LogError(L"Failed to get file timestamp info: %s.", assetFilename.c_str());
-                return false;
-            }
+        FILETIME lastWriteTime{};
+        if (!GetFileTime(sourceFile.Get(), nullptr, nullptr, &lastWriteTime))
+        {
+            LogError(L"Failed to get file timestamp info: %s.", assetFilename.c_str());
+            return false;
+        }
 
-            if (CompareFileTime(&lastWriteTime, &loggedLastWriteTime) <= 0)
-            {
-                // Source asset has not been modified since the last asset build. No need to build again
-                *needsBuild = false;
-            }
+        if (CompareFileTime(&lastWriteTime, &contentLastWriteTime) <= 0)
+        {
+            // Source asset has not been modified since the last asset build. No need to build again
+            *needsBuild = false;
         }
     }
 
@@ -194,12 +193,6 @@ bool BuildAsset(const SourceAsset& asset, std::wstring& outputRelativePath)
         return true;
     }
 
-    if (!WriteTimeEntry(assetFilename, outputFilename))
-    {
-        LogError(L"Failed to write time data.");
-        return false;
-    }
-
     Log(L"  Done.");
     return true;
 }
@@ -232,43 +225,6 @@ bool BuildTexture(const std::wstring& assetFilename, const std::wstring& outputF
     if (!SaveTexture(assetFilename, outputFilename))
     {
         LogError(L"Failed to save texture file: %s.", outputFilename.c_str());
-        return false;
-    }
-
-    return true;
-}
-
-bool WriteTimeEntry(const std::wstring& assetFilename, const std::wstring& outputFilename)
-{
-    // Store asset last write time to the time file
-    std::wstring timeFilename = outputFilename + L".time";
-    FileHandle timeFile(CreateFile(timeFilename.c_str(), GENERIC_WRITE,
-        0, nullptr, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr));
-    if (!timeFile.IsValid())
-    {
-        LogError(L"Failed to create time file: %s.", timeFilename.c_str());
-        return false;
-    }
-
-    FileHandle assetFile(CreateFile(assetFilename.c_str(), GENERIC_READ,
-        FILE_SHARE_READ, nullptr, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr));
-    if (!assetFile.IsValid())
-    {
-        LogError(L"Failed to open asset file: %s.", assetFilename.c_str());
-        return false;
-    }
-
-    FILETIME lastWriteTime{};
-    if (!GetFileTime(assetFile.Get(), nullptr, nullptr, &lastWriteTime))
-    {
-        LogError(L"Failed to query file time from: %s.", assetFilename.c_str());
-        return false;
-    }
-
-    DWORD bytesWritten{};
-    if (!WriteFile(timeFile.Get(), &lastWriteTime, sizeof(lastWriteTime), &bytesWritten, nullptr))
-    {
-        LogError(L"Failed to write data to time file: %s.", timeFilename.c_str());
         return false;
     }
 

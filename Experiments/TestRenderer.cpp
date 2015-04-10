@@ -4,6 +4,8 @@
 #include "SimpleTransformVS.h"
 #include "SimpleTexturePS.h"
 
+//#define USE_SRGB 1
+
 std::unique_ptr<TestRenderer> TestRenderer::Create(HWND window)
 {
     std::unique_ptr<TestRenderer> renderer(new TestRenderer(window));
@@ -139,7 +141,15 @@ bool TestRenderer::AddMeshes(const std::wstring& contentRoot, const std::wstring
 
             if (part.DiffuseTexture[0] != 0)
             {
-                if (!LoadTexture(contentRoot + part.DiffuseTexture, &mesh.SRV))
+                if (!LoadTexture(contentRoot + part.DiffuseTexture, &mesh.AlbedoSRV))
+                {
+                    LogError(L"Failed to load texture.");
+                    return false;
+                }
+            }
+            if (part.NormalTexture[0] != 0)
+            {
+                if (!LoadTexture(contentRoot + part.NormalTexture, &mesh.NormalSRV))
                 {
                     LogError(L"Failed to load texture.");
                     return false;
@@ -168,11 +178,22 @@ bool TestRenderer::Render(FXMVECTOR cameraPosition, FXMMATRIX view, FXMMATRIX pr
     Context->IASetIndexBuffer(TheScene->IndexBuffer.Get(), DXGI_FORMAT_R32_UINT, 0);
 
     XMStoreFloat3(&LightData.EyePosition, cameraPosition);
-    LightData.NumLights = 2;
+    LightData.NumLights = 0;
     LightData.Lights[0].Direction = XMFLOAT3(1.f, 1.f, 1.f);
     LightData.Lights[0].Color = XMFLOAT3(0.6f, 0.6f, 0.6f);
     LightData.Lights[1].Direction = XMFLOAT3(-1.f, 1.f, -1.f);
     LightData.Lights[1].Color = XMFLOAT3(0.5f, 0.5f, 0.4f);
+
+    LightData.NumPointLights = 3;
+    LightData.PointLights[0].Position = XMFLOAT3(-800.f, 300.f, 0.f);
+    LightData.PointLights[0].Color = XMFLOAT3(0.6f, 0.6f, 0.6f);
+    LightData.PointLights[0].Radius = 300.f;
+    LightData.PointLights[1].Position = XMFLOAT3(0.f, 300.f, 0.f);
+    LightData.PointLights[1].Color = XMFLOAT3(0.6f, 0.6f, 0.6f);
+    LightData.PointLights[1].Radius = 300.f;
+    LightData.PointLights[2].Position = XMFLOAT3(800.f, 300.f, 0.f);
+    LightData.PointLights[2].Color = XMFLOAT3(0.6f, 0.6f, 0.6f);
+    LightData.PointLights[2].Radius = 300.f;
 
     Context->UpdateSubresource(LightsConstantBuffer.Get(), 0, nullptr, &LightData, sizeof(LightData), 0);
     
@@ -191,7 +212,8 @@ bool TestRenderer::Render(FXMVECTOR cameraPosition, FXMMATRIX view, FXMMATRIX pr
 
         for (auto& mesh : object->Meshes)
         {
-            Context->PSSetShaderResources(0, 1, mesh.SRV.GetAddressOf());
+            ID3D11ShaderResourceView* srvs[] = { mesh.AlbedoSRV.Get(), mesh.NormalSRV.Get() };
+            Context->PSSetShaderResources(0, _countof(srvs), srvs);
             Context->DrawIndexed(mesh.NumIndices, mesh.StartIndex, 0);
         }
     }
@@ -244,7 +266,11 @@ bool TestRenderer::Initialize()
     DXGI_SWAP_CHAIN_DESC scd{};
     scd.BufferCount = 2;
     scd.BufferUsage = DXGI_USAGE_RENDER_TARGET_OUTPUT;
+#if USE_SRGB
+    scd.BufferDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM_SRGB;
+#else
     scd.BufferDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
+#endif
     scd.SampleDesc.Count = 4;
     scd.OutputWindow = Window;
     scd.Windowed = TRUE;
@@ -303,15 +329,21 @@ bool TestRenderer::Initialize()
         return false;
     }
 
-    D3D11_INPUT_ELEMENT_DESC elems[3] {};
+    D3D11_INPUT_ELEMENT_DESC elems[5] {};
     elems[0].Format = DXGI_FORMAT_R32G32B32_FLOAT;
     elems[0].SemanticName = "POSITION";
     elems[1].AlignedByteOffset = sizeof(XMFLOAT3);
     elems[1].Format = DXGI_FORMAT_R32G32B32_FLOAT;
     elems[1].SemanticName = "NORMAL";
-    elems[2].AlignedByteOffset = 2 * sizeof(XMFLOAT3);
-    elems[2].Format = DXGI_FORMAT_R32G32_FLOAT;
-    elems[2].SemanticName = "TEXCOORD";
+    elems[2].AlignedByteOffset = sizeof(XMFLOAT3) * 2;
+    elems[2].Format = DXGI_FORMAT_R32G32B32_FLOAT;
+    elems[2].SemanticName = "TANGENT";
+    elems[3].AlignedByteOffset = sizeof(XMFLOAT3) * 3;
+    elems[3].Format = DXGI_FORMAT_R32G32B32_FLOAT;
+    elems[3].SemanticName = "BITANGENT";
+    elems[4].AlignedByteOffset = sizeof(XMFLOAT3) * 4;
+    elems[4].Format = DXGI_FORMAT_R32G32_FLOAT;
+    elems[4].SemanticName = "TEXCOORD";
 
     hr = Device->CreateInputLayout(elems, _countof(elems), SimpleTransformVS, sizeof(SimpleTransformVS), &InputLayout);
     if (FAILED(hr))
@@ -434,6 +466,16 @@ bool TestRenderer::LoadTexture(const std::wstring& filename, ID3D11ShaderResourc
     D3D11_TEXTURE2D_DESC td{};
     td.ArraySize = texHeader.ArrayCount;
     td.Format = texHeader.Format;
+#if USE_SRGB
+    if (td.Format == DXGI_FORMAT_R8G8B8A8_UNORM)
+    {
+        td.Format = DXGI_FORMAT_R8G8B8A8_UNORM_SRGB;
+    }
+    else if (td.Format == DXGI_FORMAT_B8G8R8A8_UNORM)
+    {
+        td.Format = DXGI_FORMAT_B8G8R8A8_UNORM_SRGB;
+    }
+#endif
     td.Width = texHeader.Width;
     td.Height = texHeader.Height;
     td.MipLevels = texHeader.MipLevels;
@@ -448,7 +490,7 @@ bool TestRenderer::LoadTexture(const std::wstring& filename, ID3D11ShaderResourc
     HRESULT hr = S_OK;
 
     // Only try to use mips if width & height are the same size
-    if (td.Width == td.Height)
+    if (td.Width == td.Height && td.MipLevels > 1)
     {
         uint32_t width = td.Width;
         uint32_t height = td.Height;

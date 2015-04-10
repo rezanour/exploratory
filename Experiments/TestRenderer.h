@@ -15,6 +15,8 @@ class TestRenderer
     {
         XMFLOAT3 Position;
         XMFLOAT3 Normal;
+        XMFLOAT3 Tangent;
+        XMFLOAT3 BiTangent;
         XMFLOAT2 TexCoord;
     };
 
@@ -22,7 +24,8 @@ class TestRenderer
     {
         uint32_t StartIndex;
         uint32_t NumIndices;
-        ComPtr<ID3D11ShaderResourceView> SRV;
+        ComPtr<ID3D11ShaderResourceView> AlbedoSRV;
+        ComPtr<ID3D11ShaderResourceView> NormalSRV;
     };
 
     struct Object
@@ -51,11 +54,22 @@ class TestRenderer
         float Pad1;
     };
 
+    struct PointLight
+    {
+        XMFLOAT3 Position;
+        float Pad0;
+        XMFLOAT3 Color;
+        float Radius;
+    };
+
     struct LightConstants
     {
         Light Lights[MAX_LIGHTS];
+        PointLight PointLights[MAX_LIGHTS];
         XMFLOAT3 EyePosition;
         int NumLights;
+        int NumPointLights;
+        XMFLOAT3 Pad;
     };
 
 
