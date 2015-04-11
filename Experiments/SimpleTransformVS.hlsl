@@ -8,8 +8,6 @@ struct Vertex
 {
     float3 Position : POSITION;
     float3 Normal : NORMAL;
-    float3 Tangent : TANGENT;
-    float3 BiTangent : BITANGENT;
     float2 TexCoord : TEXCOORD;
 };
 
@@ -18,8 +16,6 @@ struct VertexOut
     float4 Position : SV_POSITION;
     float3 WorldPosition : TEXCOORD0;
     float3 Normal : NORMAL;
-    float3 Tangent : TANGENT;
-    float3 BiTangent : BITANGENT;
     float2 TexCoord : TEXCOORD1;
 };
 
@@ -30,8 +26,6 @@ VertexOut main(Vertex input)
     output.Position = mul(ViewProjection, worldPos);
     output.WorldPosition = worldPos.xyz;
     output.Normal = mul((float3x3)World, input.Normal);
-    output.Tangent = mul((float3x3)World, input.Tangent);
-    output.BiTangent = mul((float3x3)World, input.BiTangent);
     output.TexCoord = input.TexCoord;
 
     return output;

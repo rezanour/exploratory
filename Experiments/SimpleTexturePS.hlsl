@@ -3,8 +3,6 @@ struct Vertex
     float4 Position : SV_POSITION;
     float3 WorldPosition : TEXCOORD0;
     float3 Normal : NORMAL;
-    float3 Tangent : TANGENT;
-    float3 BiTangent : BITANGENT;
     float2 TexCoord : TEXCOORD1;
 };
 
@@ -90,6 +88,30 @@ float3 ApplyFalloff(float distance, float radius, float3 lightColor)
     return lightColor * falloff;
 }
 
+
+
+
+
+// Project the surface gradient (dhdx, dhdy) onto the surface (n, dpdx, dpdy)
+float3 CalculateSurfaceGradient(float3 n, float3 dpdx, float3 dpdy, float dhdx, float dhdy)
+{
+    float3 r1 = cross(dpdy, n);
+    float3 r2 = cross(n, dpdx);
+
+    return (r1 * dhdx + r2 * dhdy) / dot(dpdx, r1);
+}
+
+// Move the normal away from the surface normal in the opposite surface gradient direction
+float3 PerturbNormal(float3 n, float3 dpdx, float3 dpdy, float dhdx, float dhdy)
+{
+    return normalize(n - CalculateSurfaceGradient(n, dpdx, dpdy, dhdx, dhdy));
+}
+
+float ApplyChainRule(float dhdu, float dhdv, float dud_, float dvd_)
+{
+    return dhdu * dud_ + dhdv * dvd_;
+}
+
 float4 main(Vertex input) : SV_TARGET
 {
     float4 albedo = DiffuseMap.Sample(Sampler, input.TexCoord);
@@ -98,14 +120,19 @@ float4 main(Vertex input) : SV_TARGET
     // TODO: should likely use alpha to coverage
     clip(albedo.a - 0.1f);
 
-    float3 normalSample = NormalMap.Sample(Sampler, input.TexCoord).xyz;
-    float3 normal = input.Normal;
-    if (normalSample.x > 0 || normalSample.y > 0 || normalSample.z > 0)
-    {
-        // Build tangent space matrix (TODO: Should orthonormalize)
-        float3x3 tangentToWorld = float3x3(normalize(input.Tangent), normalize(input.BiTangent), normalize(input.Normal));
-        normal = mul(normalSample, tangentToWorld);
-    }
+    // Get texture coordinates, and extract bump derivative map
+    float width, height, numLevels;
+    NormalMap.GetDimensions(0, width, height, numLevels);
+
+    float2 normalSample = NormalMap.Sample(Sampler, input.TexCoord).xy * 2 - 1;
+
+    float3 dpdx = ddx_fine(input.WorldPosition);
+    float3 dpdy = ddy_fine(input.WorldPosition);
+
+    float dhdx = ApplyChainRule(normalSample.x, normalSample.y, ddx_fine(input.TexCoord.x * width), ddx_fine(input.TexCoord.y * height));
+    float dhdy = ApplyChainRule(normalSample.x, normalSample.y, ddy_fine(input.TexCoord.x * width), ddy_fine(input.TexCoord.y * height));
+
+    float3 normal = PerturbNormal(input.Normal, dpdx, dpdy, dhdx, dhdy);
 
     int i;
     float3 diffuse = float3(0, 0, 0);

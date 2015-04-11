@@ -2,8 +2,9 @@
 
 enum class AssetType
 {
-    Model = 0,
-    Texture
+    Model = 0,      // Save out as a geometric mesh with model parts
+    Texture,        // Save out as standard mipmapped texture
+    BumpTexture,    // Process single channel texture into texture-space derivative height map and save as texture
 };
 
 struct SourceAsset
@@ -35,6 +36,6 @@ bool BuildAsset(const SourceAsset& asset, std::wstring& outputRelativePath);
 struct ObjModel;
 
 bool SaveModel(const std::unique_ptr<ObjModel>& objModel, const std::wstring& outputFilename);
-bool SaveTexture(const std::wstring& assetFilename, const std::wstring& outputFilename);
+bool SaveTexture(const std::wstring& assetFilename, const std::wstring& outputFilename, bool saveDerivativeMap = false);
 
 bool ConvertToBumpMapToNormalMap(const std::wstring& bumpFilename, const std::wstring& outputFilename);

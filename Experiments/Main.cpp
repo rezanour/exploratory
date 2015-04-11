@@ -5,12 +5,12 @@
 
 // Constants
 static const wchar_t ClassName[] = L"Experiments Test Application";
-static const uint32_t ScreenWidth = 1280;
-static const uint32_t ScreenHeight = 720;
+static const uint32_t ScreenWidth = 1920;
+static const uint32_t ScreenHeight = 1080;
 static const float Fov = XMConvertToRadians(70.f);
 static const float NearClip = 0.5f;
 static const float FarClip = 10000.f;
-static const float CameraMoveSpeed = 2.5f;
+static const float CameraMoveSpeed = 4.f;
 static const float CameraTurnSpeed = 0.025f;
 static const float MouseTurnSpeed = 0.005f;
 static const bool VSyncEnabled = true;

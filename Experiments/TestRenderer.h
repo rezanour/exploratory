@@ -15,8 +15,6 @@ class TestRenderer
     {
         XMFLOAT3 Position;
         XMFLOAT3 Normal;
-        XMFLOAT3 Tangent;
-        XMFLOAT3 BiTangent;
         XMFLOAT2 TexCoord;
     };
 
@@ -25,7 +23,7 @@ class TestRenderer
         uint32_t StartIndex;
         uint32_t NumIndices;
         ComPtr<ID3D11ShaderResourceView> AlbedoSRV;
-        ComPtr<ID3D11ShaderResourceView> NormalSRV;
+        ComPtr<ID3D11ShaderResourceView> BumpDerivativeSRV;
     };
 
     struct Object

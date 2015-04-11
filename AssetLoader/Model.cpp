@@ -100,24 +100,10 @@ bool SaveModel(const std::unique_ptr<ObjModel>& objModel, const std::wstring& ou
 
             if (!textureName.empty())
             {
-                std::wstring bumpName = textureName;
-                textureName = bumpName + L".normal";
-                SourceAsset asset(AssetType::Texture, std::move(textureName));
-
-                bool needsBuild = false;
-                if (!DoesAssetNeedBuilt(asset, &needsBuild) || needsBuild)
+                if (!BuildAsset(SourceAsset(AssetType::BumpTexture, std::move(textureName)), textureName))
                 {
-                    if (!ConvertToBumpMapToNormalMap(bumpName, asset.Path))
-                    {
-                        LogError(L"Error processing bump map.");
-                        return false;
-                    }
-
-                    if (!BuildAsset(asset, textureName))
-                    {
-                        LogError(L"Error writing output file.");
-                        return false;
-                    }
+                    LogError(L"Error writing output file.");
+                    return false;
                 }
             }
             wcscpy_s(part.NormalTexture, textureName.c_str());

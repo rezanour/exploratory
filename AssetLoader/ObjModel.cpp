@@ -242,37 +242,6 @@ void ObjModel::ReadFace(char* line, ObjModelPart* part)
                 XMVECTOR n = XMVector3Normalize(XMVector3Cross(b - a, c - a));
                 XMStoreFloat3(&normal, n);
 
-                // Compute tangent space vectors
-                XMFLOAT3 v1, v2, v3;
-                XMStoreFloat3(&v1, a);
-                XMStoreFloat3(&v2, b);
-                XMStoreFloat3(&v3, c);
-
-                XMFLOAT2 w1 = TexCoords[indexKeys[0].vals[1] - 1];
-                XMFLOAT2 w2 = TexCoords[indexKeys[1].vals[1] - 1];
-                XMFLOAT2 w3 = TexCoords[indexKeys[2].vals[1] - 1];
-
-                float x1 = v2.x - v1.x;
-                float x2 = v3.x - v1.x;
-                float y1 = v2.y - v1.y;
-                float y2 = v3.y - v1.y;
-                float z1 = v2.z - v1.z;
-                float z2 = v3.z - v1.z;
-
-                float s1 = w2.x - w1.x;
-                float s2 = w3.x - w1.x;
-                float t1 = w2.y - w1.y;
-                float t2 = w3.y - w1.y;
-
-                float r = 1.0F / (s1 * t2 - s2 * t1);
-                XMFLOAT3 tangent((t2 * x1 - t1 * x2) * r, (t2 * y1 - t1 * y2) * r,
-                    (t2 * z1 - t1 * z2) * r);
-                XMFLOAT3 bitangent((s1 * x2 - s2 * x1) * r, (s1 * y2 - s2 * y1) * r,
-                    (s1 * z2 - s2 * z1) * r);
-
-                XMStoreFloat3(&tangent, XMVector3Normalize(XMLoadFloat3(&tangent)));
-                XMStoreFloat3(&bitangent, XMVector3Normalize(XMLoadFloat3(&bitangent)));
-
                 for (auto key : indexKeys)
                 {
                     bool found = false;
@@ -306,9 +275,6 @@ void ObjModel::ReadFace(char* line, ObjModelPart* part)
                         {
                             v.TexCoord = TexCoords[key.vals[1] - 1];
                         }
-
-                        v.Tangent = tangent;
-                        v.BiTangent = bitangent;
 
                         Vertices.push_back(v);
                         Indices.push_back((uint32_t)Vertices.size() - 1);

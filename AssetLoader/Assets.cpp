@@ -14,7 +14,7 @@ static bool EnsurePathExists(const std::wstring& path);
 static bool DoesAssetNeedBuilt(const std::wstring& assetFilename, const std::wstring& outputFilename, bool* needsBuild);
 
 static bool BuildModel(const std::wstring& assetFilename, const std::wstring& outputFilename);
-static bool BuildTexture(const std::wstring& assetFilename, const std::wstring& outputFilename);
+static bool BuildTexture(const std::wstring& assetFilename, const std::wstring& outputFilename, bool saveDerivativeMap = false);
 
 
 bool ProcessAssets(
@@ -27,6 +27,7 @@ bool ProcessAssets(
         // Initialize extension table
         Extensions[AssetType::Model] = L"model";
         Extensions[AssetType::Texture] = L"texture";
+        Extensions[AssetType::BumpTexture] = L"texture";
     }
 
     SourceRoot = sourceRoot;
@@ -188,6 +189,14 @@ bool BuildAsset(const SourceAsset& asset, std::wstring& outputRelativePath)
         }
         break;
 
+    case AssetType::BumpTexture:
+        if (!BuildTexture(assetFilename, outputFilename, true))
+        {
+            LogError(L"Failed to build asset: %s.", assetFilename.c_str());
+            return false;
+        }
+        break;
+
     default:
         LogError(L"Unimplemented.");
         return true;
@@ -220,9 +229,9 @@ bool BuildModel(const std::wstring& assetFilename, const std::wstring& outputFil
     return true;
 }
 
-bool BuildTexture(const std::wstring& assetFilename, const std::wstring& outputFilename)
+bool BuildTexture(const std::wstring& assetFilename, const std::wstring& outputFilename, bool saveDerivativeMap)
 {
-    if (!SaveTexture(assetFilename, outputFilename))
+    if (!SaveTexture(assetFilename, outputFilename, saveDerivativeMap))
     {
         LogError(L"Failed to save texture file: %s.", outputFilename.c_str());
         return false;

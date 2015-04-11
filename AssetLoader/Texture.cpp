@@ -5,7 +5,7 @@
 #include "AssetLoader.h"
 #include <wincodec.h>
 
-bool SaveTexture(const std::wstring& assetFilename, const std::wstring& outputFilename)
+bool SaveTexture(const std::wstring& assetFilename, const std::wstring& outputFilename, bool saveDerivativeMap)
 {
     FileHandle outputFile(CreateFile(outputFilename.c_str(), GENERIC_WRITE,
         0, nullptr, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr));
@@ -37,8 +37,47 @@ bool SaveTexture(const std::wstring& assetFilename, const std::wstring& outputFi
         }
     }
 
+    if (saveDerivativeMap)
+    {
+        ScratchImage originalImage(std::move(image));
+
+        if (metadata.format != DXGI_FORMAT_R8_UNORM)
+        {
+            LogError(L"Saving as derivative map currently expects to operate on single channel texture.");
+            return false;
+        }
+
+        hr = image.Initialize2D(DXGI_FORMAT_R8G8_UNORM, metadata.width, metadata.height, 1, 1);
+        if (FAILED(hr))
+        {
+            LogError(L"Failed to create intermediate derivative map.");
+            return false;
+        }
+
+        uint8_t* pSrc = originalImage.GetPixels();
+        uint16_t* pDst = (uint16_t*)image.GetPixels();
+
+        for (int y = 0; y < metadata.height; ++y)
+        {
+            for (int x = 0; x < metadata.width; ++x)
+            {
+                float x1 = pSrc[y * metadata.width + x] / 255.f;
+                float x2 = pSrc[y * metadata.width + min(x + 1, metadata.width - 1)] / 255.f;
+                float y1 = pSrc[y * metadata.width + x] / 255.f;
+                float y2 = pSrc[min(y + 1, metadata.height - 1) * metadata.width + x] / 255.f;
+
+                // Save derivatives in unorm space
+                float dy = ((y2 - y1) + 1) * 0.5f;
+                float dx = ((x2 - x1) + 1) * 0.5f;
+
+                // save out to R8G8
+                pDst[y * metadata.width + x] = ((uint16_t)(dy * 255.f) << 8) | (uint16_t)(dx * 255.f);
+            }
+        }
+    }
+
     ScratchImage mipChain;
-    hr = GenerateMipMaps(image.GetImages(), image.GetImageCount(), metadata, TEX_FILTER_BOX | TEX_FILTER_FORCE_NON_WIC, 0, mipChain);
+    hr = GenerateMipMaps(image.GetImages(), image.GetImageCount(), image.GetMetadata(), TEX_FILTER_BOX | TEX_FILTER_FORCE_NON_WIC, 0, mipChain);
     if (FAILED(hr))
     {
         LogError(L"Failed to create mips for texture.");
