@@ -108,6 +108,18 @@ bool SaveModel(const std::unique_ptr<ObjModel>& objModel, const std::wstring& ou
             }
             wcscpy_s(part.NormalTexture, textureName.c_str());
 
+            textureName = FindTexture(objModel, srcPart.Material, ObjMaterial::TextureType::SpecularColor);
+
+            if (!textureName.empty())
+            {
+                if (!BuildAsset(SourceAsset(AssetType::Texture, std::move(textureName)), textureName))
+                {
+                    LogError(L"Error writing output file.");
+                    return false;
+                }
+            }
+            wcscpy_s(part.SpecularTexture, textureName.c_str());
+
             part.StartIndex = srcPart.StartIndex;
             part.NumIndices = srcPart.NumIndices;
 

@@ -42,6 +42,7 @@ struct ModelPart
 {
     wchar_t DiffuseTexture[256];
     wchar_t NormalTexture[256];
+    wchar_t SpecularTexture[256];
     uint32_t StartIndex;
     uint32_t NumIndices;
 };

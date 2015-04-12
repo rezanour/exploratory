@@ -3,6 +3,7 @@
 #include "Debug.h"
 #include "SimpleTransformVS.h"
 #include "SimpleTexturePS.h"
+#include "ShadowGenPS.h"
 
 //#define USE_SRGB 1
 
@@ -155,6 +156,14 @@ bool TestRenderer::AddMeshes(const std::wstring& contentRoot, const std::wstring
                     return false;
                 }
             }
+            if (part.SpecularTexture[0] != 0)
+            {
+                if (!LoadTexture(contentRoot + part.SpecularTexture, &mesh.SpecularSRV))
+                {
+                    LogError(L"Failed to load texture.");
+                    return false;
+                }
+            }
 
             obj->Meshes.push_back(mesh);
         }
@@ -178,13 +187,13 @@ bool TestRenderer::Render(FXMVECTOR cameraPosition, FXMMATRIX view, FXMMATRIX pr
     Context->IASetIndexBuffer(TheScene->IndexBuffer.Get(), DXGI_FORMAT_R32_UINT, 0);
 
     XMStoreFloat3(&LightData.EyePosition, cameraPosition);
-    LightData.NumLights = 0;
+    LightData.NumLights = 2;
     LightData.Lights[0].Direction = XMFLOAT3(1.f, 1.f, 1.f);
     LightData.Lights[0].Color = XMFLOAT3(0.6f, 0.6f, 0.6f);
     LightData.Lights[1].Direction = XMFLOAT3(-1.f, 1.f, -1.f);
-    LightData.Lights[1].Color = XMFLOAT3(0.5f, 0.5f, 0.4f);
+    LightData.Lights[1].Color = XMFLOAT3(0.5f, 0.5f, 0.5f);
 
-    LightData.NumPointLights = 3;
+    LightData.NumPointLights = 0;
     LightData.PointLights[0].Position = XMFLOAT3(0.f, 300.f, 0.f);
     LightData.PointLights[0].Color = XMFLOAT3(0.6f, 0.6f, 0.6f);
     LightData.PointLights[0].Radius = 300.f;
@@ -197,6 +206,53 @@ bool TestRenderer::Render(FXMVECTOR cameraPosition, FXMMATRIX view, FXMMATRIX pr
 
     Context->UpdateSubresource(LightsConstantBuffer.Get(), 0, nullptr, &LightData, sizeof(LightData), 0);
     
+#if 0
+    ID3D11ShaderResourceView* nullSRVS[] = { nullptr, nullptr, nullptr, nullptr };
+    Context->PSSetShaderResources(0, _countof(nullSRVS), nullSRVS);
+
+    ID3D11RenderTargetView* rtvs[] = { ShadowDepthRTV.Get(), ShadowPositionRTV.Get(), ShadowNormalRTV.Get(), ShadowFluxRTV.Get() };
+    Context->OMSetRenderTargets(_countof(rtvs), rtvs, nullptr);
+
+    Context->PSSetShader(ShadowPixelShader.Get(), nullptr, 0);
+
+    for (int i = 0; i < min(LightData.NumLights, 1); ++i)
+    {
+        XMMATRIX lightView = XMMatrixLookToRH(XMLoadFloat3(&LightData.Lights[i].Direction) * 1000, -XMLoadFloat3(&LightData.Lights[i].Direction), XMVectorSet(0.f, 1.f, 0.f, 0.f));
+        XMMATRIX lightProj = XMMatrixOrthographicRH(1024.f, 1024.f, 0.1f, 1000.f);
+
+        XMStoreFloat4x4(&LightData.ToShadowSpace, lightView * lightProj);
+
+        for (auto& object : TheScene->Objects)
+        {
+            if (FAILED(Context->Map(ConstantBuffer.Get(), 0, D3D11_MAP_WRITE_DISCARD, 0, &mapped)))
+            {
+                LogError(L"Failed to map constant buffer.");
+            }
+
+            Constants* constants = (Constants*)mapped.pData;
+            XMStoreFloat4x4(&constants->ViewProjection, lightView * lightProj);
+            constants->World = object->World;
+
+            Context->Unmap(ConstantBuffer.Get(), 0);
+
+            for (auto& mesh : object->Meshes)
+            {
+                ID3D11ShaderResourceView* srvs[] = { mesh.AlbedoSRV.Get(), mesh.BumpDerivativeSRV.Get(), mesh.SpecularSRV.Get(), mesh.AlbedoSRV.Get(), mesh.BumpDerivativeSRV.Get() };
+                Context->PSSetShaderResources(0, _countof(srvs), srvs);
+                Context->DrawIndexed(mesh.NumIndices, mesh.StartIndex, 0);
+            }
+        }
+
+    }
+
+    Context->OMSetRenderTargets(1, RenderTarget.GetAddressOf(), nullptr);
+
+    ID3D11ShaderResourceView* srvs[] = { ShadowDepthSRV.Get(), ShadowPositionSRV.Get(), ShadowNormalSRV.Get(), ShadowFluxSRV.Get() };
+    Context->PSSetShaderResources(0, _countof(srvs), srvs);
+
+    Context->PSSetShader(PixelShader.Get(), nullptr, 0);
+
+#endif
     for (auto& object : TheScene->Objects)
     {
         if (FAILED(Context->Map(ConstantBuffer.Get(), 0, D3D11_MAP_WRITE_DISCARD, 0, &mapped)))
@@ -212,8 +268,8 @@ bool TestRenderer::Render(FXMVECTOR cameraPosition, FXMMATRIX view, FXMMATRIX pr
 
         for (auto& mesh : object->Meshes)
         {
-            ID3D11ShaderResourceView* srvs[] = { mesh.AlbedoSRV.Get(), mesh.BumpDerivativeSRV.Get() };
-            Context->PSSetShaderResources(0, _countof(srvs), srvs);
+            ID3D11ShaderResourceView* srvs[] = { mesh.AlbedoSRV.Get(), mesh.BumpDerivativeSRV.Get(), mesh.SpecularSRV.Get() };
+            Context->PSSetShaderResources(4, _countof(srvs), srvs);
             Context->DrawIndexed(mesh.NumIndices, mesh.StartIndex, 0);
         }
     }
@@ -329,6 +385,13 @@ bool TestRenderer::Initialize()
         return false;
     }
 
+    hr = Device->CreatePixelShader(ShadowGenPS, sizeof(ShadowGenPS), nullptr, &ShadowPixelShader);
+    if (FAILED(hr))
+    {
+        LogError(L"Failed to create pixel shader.");
+        return false;
+    }
+
     D3D11_INPUT_ELEMENT_DESC elems[3] {};
     elems[0].Format = DXGI_FORMAT_R32G32B32_FLOAT;
     elems[0].SemanticName = "POSITION";
@@ -399,6 +462,103 @@ bool TestRenderer::Initialize()
         LogError(L"Failed to create rasterizer state.");
         return false;
     }
+
+    td.ArraySize = 1;
+    td.BindFlags = D3D11_BIND_SHADER_RESOURCE | D3D11_BIND_RENDER_TARGET;
+    td.Format = DXGI_FORMAT_R32_FLOAT;
+    td.Width = 1024;
+    td.Height = 1024;
+    td.MipLevels = 1;
+    td.MiscFlags = 0;
+    td.SampleDesc.Count = 1;
+    td.Usage = D3D11_USAGE_DEFAULT;
+
+    hr = Device->CreateTexture2D(&td, nullptr, texture.ReleaseAndGetAddressOf());
+    if (FAILED(hr))
+    {
+        LogError(L"Failed to create shadow depth texture.");
+        return false;
+    }
+
+#if 0
+    hr = Device->CreateRenderTargetView(texture.Get(), nullptr, &ShadowDepthRTV);
+    if (FAILED(hr))
+    {
+        LogError(L"Failed to create depth stencil view.");
+        return false;
+    }
+
+    hr = Device->CreateShaderResourceView(texture.Get(), nullptr, &ShadowDepthSRV);
+    if (FAILED(hr))
+    {
+        LogError(L"Failed to create depth stencil view.");
+        return false;
+    }
+
+    td.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
+    hr = Device->CreateTexture2D(&td, nullptr, texture.ReleaseAndGetAddressOf());
+    if (FAILED(hr))
+    {
+        LogError(L"Failed to create shadow worldPosition texture.");
+        return false;
+    }
+
+    hr = Device->CreateRenderTargetView(texture.Get(), nullptr, &ShadowPositionRTV);
+    if (FAILED(hr))
+    {
+        LogError(L"Failed to create depth stencil view.");
+        return false;
+    }
+
+    hr = Device->CreateShaderResourceView(texture.Get(), nullptr, &ShadowPositionSRV);
+    if (FAILED(hr))
+    {
+        LogError(L"Failed to create depth stencil view.");
+        return false;
+    }
+
+    hr = Device->CreateTexture2D(&td, nullptr, texture.ReleaseAndGetAddressOf());
+    if (FAILED(hr))
+    {
+        LogError(L"Failed to create shadow normals texture.");
+        return false;
+    }
+
+    hr = Device->CreateRenderTargetView(texture.Get(), nullptr, &ShadowNormalRTV);
+    if (FAILED(hr))
+    {
+        LogError(L"Failed to create depth stencil view.");
+        return false;
+    }
+
+    hr = Device->CreateShaderResourceView(texture.Get(), nullptr, &ShadowNormalSRV);
+    if (FAILED(hr))
+    {
+        LogError(L"Failed to create depth stencil view.");
+        return false;
+    }
+
+    hr = Device->CreateTexture2D(&td, nullptr, texture.ReleaseAndGetAddressOf());
+    if (FAILED(hr))
+    {
+        LogError(L"Failed to create shadow flux texture.");
+        return false;
+    }
+
+    hr = Device->CreateRenderTargetView(texture.Get(), nullptr, &ShadowFluxRTV);
+    if (FAILED(hr))
+    {
+        LogError(L"Failed to create depth stencil view.");
+        return false;
+    }
+
+    hr = Device->CreateShaderResourceView(texture.Get(), nullptr, &ShadowFluxSRV);
+    if (FAILED(hr))
+    {
+        LogError(L"Failed to create depth stencil view.");
+        return false;
+    }
+#endif
 
     RECT rc{};
     GetClientRect(Window, &rc);
@@ -533,6 +693,12 @@ void TestRenderer::Clear()
 {
     static const float clearColor[] = { 0.f, 0.f, 0.f, 1.f };
     Context->ClearRenderTargetView(RenderTarget.Get(), clearColor);
+
+#if 0
+    static const float depthClearColor[] = { 1.f, 1.f, 1.f, 1.f };
+    Context->ClearRenderTargetView(ShadowDepthRTV.Get(), depthClearColor);
+#endif
+
     Context->ClearDepthStencilView(DepthBuffer.Get(), D3D11_CLEAR_DEPTH, 1.f, 0);
 }
 

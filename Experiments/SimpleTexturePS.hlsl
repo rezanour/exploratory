@@ -28,10 +28,16 @@ cbuffer Constants
     float3 EyePosition;
     int NumLights;
     int NumPointLights;
+    float4x4 ToShadowSpace;
 };
 
-Texture2D DiffuseMap;
-Texture2D NormalMap;
+Texture2D ShadowDepth : register(t0);
+Texture2D ShadowPosition : register(t1);
+Texture2D ShadowNormal : register(t2);
+Texture2D ShadowFlux: register(t3);
+Texture2D DiffuseMap : register(t4);
+Texture2D DerivativeMap : register(t5);
+Texture2D SpecularMap : register(t6);
 sampler Sampler;
 
 static const float PI = 3.14156f;
@@ -122,9 +128,9 @@ float4 main(Vertex input) : SV_TARGET
 
     // Get texture coordinates, and extract bump derivative map
     float width, height, numLevels;
-    NormalMap.GetDimensions(0, width, height, numLevels);
+    DerivativeMap.GetDimensions(0, width, height, numLevels);
 
-    float2 normalSample = NormalMap.Sample(Sampler, input.TexCoord).xy * 2 - 1;
+    float2 normalSample = DerivativeMap.Sample(Sampler, input.TexCoord).xy * 2 - 1;
 
     float3 dpdx = ddx_fine(input.WorldPosition);
     float3 dpdy = ddy_fine(input.WorldPosition);
@@ -134,27 +140,46 @@ float4 main(Vertex input) : SV_TARGET
 
     float3 normal = PerturbNormal(input.Normal, dpdx, dpdy, dhdx, dhdy);
 
+    float3 specularColor = SpecularMap.Sample(Sampler, input.TexCoord).xyz;
+
     int i;
     float3 diffuse = float3(0, 0, 0);
-    float3 specular = float3(0, 0, 0);
-    float3 N = normalize(normal);
-    float3 V = normalize(EyePosition - input.WorldPosition);
-    for (i = 0; i < NumLights; ++i)
-    {
-        float3 L = normalize(Lights[i].Direction);
-        diffuse += albedo.xyz * Lights[i].Color * saturate(dot(N, L));
-        specular += ComputeBRDF(L, N, V, Lights[i].Color);
-    }
+        float3 specular = float3(0, 0, 0);
+        float3 N = normalize(normal);
+        float3 V = normalize(EyePosition - input.WorldPosition);
+
+#if 0
+        for (i = 0; i < NumLights; ++i)
+        {
+            float3 L = normalize(Lights[i].Direction);
+                diffuse += albedo.xyz * Lights[i].Color * saturate(dot(N, L));
+            specular += ComputeBRDF(L, N, V, Lights[i].Color * specularColor);
+        }
 
     for (i = 0; i < NumPointLights; ++i)
     {
         float3 toLight = PointLights[i].Position - input.WorldPosition;
-        float3 L = normalize(toLight);
-        float dist = length(toLight);
-        float3 lightColor = ApplyFalloff(dist, PointLights[i].Radius, PointLights[i].Color);
-        diffuse += albedo.xyz * lightColor * saturate(dot(N, L));
-        specular += ComputeBRDF(L, N, V, lightColor);
+            float3 L = normalize(toLight);
+            float dist = length(toLight);
+        float3 lightColorDiffuse = ApplyFalloff(dist, PointLights[i].Radius, PointLights[i].Color);
+            float3 lightColorSpecular = ApplyFalloff(dist, PointLights[i].Radius, specularColor * PointLights[i].Color);
+            diffuse += albedo.xyz * lightColorDiffuse * saturate(dot(N, L));
+        specular += ComputeBRDF(L, N, V, lightColorSpecular);
     }
+#else
+        float3 shadowPosition = mul(ToShadowSpace, float4(input.WorldPosition, 1)).xyz;
+        float shadowDepth = ShadowDepth.Sample(Sampler, shadowPosition.xy).x;
+    if (shadowPosition.z > shadowDepth)
+    {
+        return float4(0.f, 0.f, 0.f, 1.0f);
+    }
+    for (i = 0; i < NumLights; ++i)
+    {
+        float3 L = normalize(Lights[i].Direction);
+        diffuse += albedo.xyz * Lights[i].Color * saturate(dot(N, L));
+        specular += ComputeBRDF(L, N, V, Lights[i].Color * specularColor);
+    }
+#endif
 
     return float4(diffuse + specular, albedo.a);
 }
