@@ -178,13 +178,13 @@ bool TestRenderer::Render(FXMVECTOR cameraPosition, FXMMATRIX view, FXMMATRIX pr
     Context->IASetIndexBuffer(TheScene->IndexBuffer.Get(), DXGI_FORMAT_R32_UINT, 0);
 
     XMStoreFloat3(&LightData.EyePosition, cameraPosition);
-    LightData.NumLights = 2;
+    LightData.NumLights = 0;
     LightData.Lights[0].Direction = XMFLOAT3(1.f, 1.f, 1.f);
     LightData.Lights[0].Color = XMFLOAT3(0.6f, 0.6f, 0.6f);
     LightData.Lights[1].Direction = XMFLOAT3(-1.f, 1.f, -1.f);
     LightData.Lights[1].Color = XMFLOAT3(0.5f, 0.5f, 0.4f);
 
-    LightData.NumPointLights = 0;
+    LightData.NumPointLights = 3;
     LightData.PointLights[0].Position = XMFLOAT3(0.f, 300.f, 0.f);
     LightData.PointLights[0].Color = XMFLOAT3(0.6f, 0.6f, 0.6f);
     LightData.PointLights[0].Radius = 300.f;

@@ -273,7 +273,7 @@ void ObjModel::ReadFace(char* line, ObjModelPart* part)
                         }
                         if (key.vals[1] > 0)
                         {
-                            v.TexCoord = TexCoords[key.vals[1] - 1];
+                            v.TexCoord = XMFLOAT2(1.f - TexCoords[key.vals[1] - 1].x, 1.f - TexCoords[key.vals[1] - 1].y);
                         }
 
                         Vertices.push_back(v);

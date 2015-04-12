@@ -66,7 +66,7 @@ float3 F_Schlick(float3 specularColor, float hDotL)
 float3 ComputeBRDF(float3 L, float3 N, float3 V, float3 specularColor)
 {
     // TODO: take in material roughness.
-    const float Roughness = 0.7f;   // Medium roughness
+    const float Roughness = 0.6f;   // Medium roughness
 
     float3 H = normalize(L + V);
     float nDotH = saturate(dot(N, H));
