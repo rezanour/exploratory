@@ -1,14 +1,13 @@
+/*
+ * Simple transform VS
+ */
+
+#include "Common.hlsli"
+
 cbuffer Constants
 {
     float4x4 World;
     float4x4 ViewProjection;
-};
-
-struct Vertex
-{
-    float3 Position : POSITION;
-    float3 Normal : NORMAL;
-    float2 TexCoord : TEXCOORD;
 };
 
 struct VertexOut
@@ -19,13 +18,19 @@ struct VertexOut
     float2 TexCoord : TEXCOORD1;
 };
 
-VertexOut main(Vertex input)
+VertexOut main(StandardVertex input)
 {
     VertexOut output;
+
     float4 worldPos = mul(World, float4(input.Position, 1));
+
     output.Position = mul(ViewProjection, worldPos);
     output.WorldPosition = worldPos.xyz;
+
+    // Assumes non-translate upperleft 3x3 submatrix of World
+    // is orthonormal (simple rotation & scaling)
     output.Normal = mul((float3x3)World, input.Normal);
+
     output.TexCoord = input.TexCoord;
 
     return output;

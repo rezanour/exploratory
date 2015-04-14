@@ -112,7 +112,7 @@ bool SaveModel(const std::unique_ptr<ObjModel>& objModel, const std::wstring& ou
 
             if (!textureName.empty())
             {
-                if (!BuildAsset(SourceAsset(AssetType::Texture, std::move(textureName)), textureName))
+                if (!BuildAsset(SourceAsset(AssetType::SpecularTexture, std::move(textureName)), textureName))
                 {
                     LogError(L"Error writing output file.");
                     return false;

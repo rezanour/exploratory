@@ -5,7 +5,7 @@
 #include "AssetLoader.h"
 #include <wincodec.h>
 
-bool SaveTexture(const std::wstring& assetFilename, const std::wstring& outputFilename, bool saveDerivativeMap)
+bool SaveTexture(const std::wstring& assetFilename, const std::wstring& outputFilename, bool saveDerivativeMap, bool expandChannels)
 {
     FileHandle outputFile(CreateFile(outputFilename.c_str(), GENERIC_WRITE,
         0, nullptr, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr));
@@ -73,6 +73,18 @@ bool SaveTexture(const std::wstring& assetFilename, const std::wstring& outputFi
                 // save out to R8G8
                 pDst[y * metadata.width + x] = ((uint16_t)(dy * 255.f) << 8) | (uint16_t)(dx * 255.f);
             }
+        }
+    }
+    else if (expandChannels && metadata.format == DXGI_FORMAT_R8_UNORM)
+    {
+        ScratchImage originalImage(std::move(image));
+
+        hr = Convert(originalImage.GetImages(), originalImage.GetImageCount(),
+            metadata, DXGI_FORMAT_R8G8B8A8_UNORM, TEX_FILTER_BOX, 0.f, image);
+        if (FAILED(hr))
+        {
+            LogError(L"Failed to create intermediate expanded texture.");
+            return false;
         }
     }
 

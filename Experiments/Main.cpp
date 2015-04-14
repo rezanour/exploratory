@@ -62,9 +62,9 @@ int WINAPI WinMain(HINSTANCE instance, HINSTANCE, LPSTR, int)
     // TODO: Replace with something better as needed
 
     // Camera info
-    XMVECTOR position = XMVectorSet(0.f, 30.f, 0.f, 1.f);
-    XMVECTOR forward = XMVectorSet(-1.f, 0.f, 0.f, 0.f);
-    XMVECTOR right = XMVectorSet(0.f, 0.f, -1.f, 0.f);
+    XMVECTOR position = XMVectorSet(0.f, 10.f, 0.f, 1.f);
+    XMVECTOR forward = XMVectorSet(0.f, 0.f, -1.f, 0.f);
+    XMVECTOR right = XMVectorSet(1.f, 0.f, 0.f, 0.f);
     XMVECTOR up = XMVectorSet(0.f, 1.f, 0.f, 0.f);
     float yaw = 0.f;
     float pitch = 0.f;

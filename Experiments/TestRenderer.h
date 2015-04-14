@@ -9,6 +9,9 @@ class TestRenderer
     {
         XMFLOAT4X4 World;
         XMFLOAT4X4 ViewProjection;
+        float NearClip;
+        float FarClip;
+        XMFLOAT2 Pad;
     };
 
     struct Vertex
@@ -69,7 +72,6 @@ class TestRenderer
         int NumLights;
         int NumPointLights;
         XMFLOAT3 Pad;
-        XMFLOAT4X4 ToShadowSpace;
     };
 
 
@@ -104,17 +106,8 @@ private:
     ComPtr<ID3D11Buffer> LightsConstantBuffer;
     ComPtr<ID3D11VertexShader> VertexShader;
     ComPtr<ID3D11PixelShader> PixelShader;
-    ComPtr<ID3D11PixelShader> ShadowPixelShader;
     ComPtr<ID3D11RasterizerState> RasterizerState;
     ComPtr<ID3D11SamplerState> Sampler;
-    ComPtr<ID3D11RenderTargetView> ShadowDepthRTV;
-    ComPtr<ID3D11RenderTargetView> ShadowPositionRTV;
-    ComPtr<ID3D11RenderTargetView> ShadowNormalRTV;
-    ComPtr<ID3D11RenderTargetView> ShadowFluxRTV;
-    ComPtr<ID3D11ShaderResourceView> ShadowDepthSRV;
-    ComPtr<ID3D11ShaderResourceView> ShadowPositionSRV;
-    ComPtr<ID3D11ShaderResourceView> ShadowNormalSRV;
-    ComPtr<ID3D11ShaderResourceView> ShadowFluxSRV;
 
     std::shared_ptr<Scene> TheScene;
     LightConstants LightData;

@@ -13,6 +13,9 @@
       <UniqueIdentifier>{67DA6AB6-F800-4c08-8B7A-83BB121AAD01}</UniqueIdentifier>
       <Extensions>rc;ico;cur;bmp;dlg;rc2;rct;bin;rgs;gif;jpg;jpeg;jpe;resx;tiff;tif;png;wav;mfcribbon-ms</Extensions>
     </Filter>
+    <Filter Include="Shaders">
+      <UniqueIdentifier>{3e17e6b2-e8db-48a9-a4bc-7c668aee9b8c}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="Debug.h">
@@ -46,14 +49,16 @@
     </ClCompile>
   </ItemGroup>
   <ItemGroup>
-    <FxCompile Include="SimpleTransformVS.hlsl">
-      <Filter>Resource Files</Filter>
+    <None Include="Shaders\Common.hlsli">
+      <Filter>Shaders</Filter>
+    </None>
+  </ItemGroup>
+  <ItemGroup>
+    <FxCompile Include="Shaders\SimpleTransformVS.hlsl">
+      <Filter>Shaders</Filter>
     </FxCompile>
-    <FxCompile Include="SimpleTexturePS.hlsl">
-      <Filter>Resource Files</Filter>
-    </FxCompile>
-    <FxCompile Include="ShadowGenPS.hlsl">
-      <Filter>Resource Files</Filter>
+    <FxCompile Include="Shaders\SimpleTexturePS.hlsl">
+      <Filter>Shaders</Filter>
     </FxCompile>
   </ItemGroup>
 </Project>
