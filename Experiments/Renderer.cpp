@@ -2,6 +2,10 @@
 #include "Renderer.h"
 #include "Debug.h"
 
+#if defined (ENABLE_DX12_SUPPORT)
+
+#pragma comment(lib, "d3d12.lib")
+
 std::unique_ptr<Renderer> Renderer::Create(HWND window)
 {
     std::unique_ptr<Renderer> renderer(new Renderer(window));
@@ -99,3 +103,5 @@ bool Renderer::Present(bool vsync)
     }
     return true;
 }
+
+#endif // DX12 support

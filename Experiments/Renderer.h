@@ -1,5 +1,7 @@
 #pragma once
 
+#if defined (ENABLE_DX12_SUPPORT)
+
 // Implements all rendering code, used by the main application
 class Renderer
 {
@@ -22,3 +24,5 @@ private:
     ComPtr<IDXGISwapChain> SwapChain;
     ComPtr<ID3D12Device> Device;
 };
+
+#endif // DX12 support

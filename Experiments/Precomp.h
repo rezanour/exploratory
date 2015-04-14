@@ -13,8 +13,13 @@
 #include <string>
 #include <map>
 
+#include <d3d11_2.h>
+#include <dxgi1_3.h>
+
+#if defined (ENABLE_DX12_SUPPORT)
 #include <d3d12.h>
 #include <dxgi1_4.h>
+#endif
 
 // DDS library
 #include <DirectXTex.h>

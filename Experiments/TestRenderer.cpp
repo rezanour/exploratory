@@ -141,26 +141,56 @@ bool TestRenderer::AddMeshes(const std::wstring& contentRoot, const std::wstring
 
             if (part.DiffuseTexture[0] != 0)
             {
-                if (!LoadTexture(contentRoot + part.DiffuseTexture, &mesh.AlbedoSRV))
+                std::wstring path = contentRoot + part.DiffuseTexture;
+                auto it = CachedTextureMap.find(path);
+                if (it == CachedTextureMap.end())
                 {
-                    LogError(L"Failed to load texture.");
-                    return false;
+                    if (!LoadTexture(path, &mesh.AlbedoSRV))
+                    {
+                        LogError(L"Failed to load texture.");
+                        return false;
+                    }
+                    CachedTextureMap[path] = mesh.AlbedoSRV;
+                }
+                else
+                {
+                    mesh.AlbedoSRV = it->second;
                 }
             }
             if (part.NormalTexture[0] != 0)
             {
-                if (!LoadTexture(contentRoot + part.NormalTexture, &mesh.BumpDerivativeSRV))
+                std::wstring path = contentRoot + part.NormalTexture;
+                auto it = CachedTextureMap.find(path);
+                if (it == CachedTextureMap.end())
                 {
-                    LogError(L"Failed to load texture.");
-                    return false;
+                    if (!LoadTexture(path, &mesh.BumpDerivativeSRV))
+                    {
+                        LogError(L"Failed to load texture.");
+                        return false;
+                    }
+                    CachedTextureMap[path] = mesh.BumpDerivativeSRV;
+                }
+                else
+                {
+                    mesh.BumpDerivativeSRV = it->second;
                 }
             }
             if (part.SpecularTexture[0] != 0)
             {
-                if (!LoadTexture(contentRoot + part.SpecularTexture, &mesh.SpecularSRV))
+                std::wstring path = contentRoot + part.SpecularTexture;
+                auto it = CachedTextureMap.find(path);
+                if (it == CachedTextureMap.end())
                 {
-                    LogError(L"Failed to load texture.");
-                    return false;
+                    if (!LoadTexture(path, &mesh.SpecularSRV))
+                    {
+                        LogError(L"Failed to load texture.");
+                        return false;
+                    }
+                    CachedTextureMap[path] = mesh.SpecularSRV;
+                }
+                else
+                {
+                    mesh.SpecularSRV = it->second;
                 }
             }
 
@@ -197,10 +227,10 @@ bool TestRenderer::Render(FXMVECTOR cameraPosition, FXMMATRIX view, FXMMATRIX pr
     LightData.PointLights[0].Color = XMFLOAT3(0.6f, 0.6f, 0.6f);
     LightData.PointLights[0].Radius = 500.f;
     LightData.PointLights[1].Position = XMFLOAT3(-800.f, 300.f, 0.f);
-    LightData.PointLights[1].Color = XMFLOAT3(0.6f, 0.6f, 0.6f);
+    LightData.PointLights[1].Color = XMFLOAT3(0.6f, 0.6f, 0.9f);
     LightData.PointLights[1].Radius = 500.f;
     LightData.PointLights[2].Position = XMFLOAT3(800.f, 300.f, 0.f);
-    LightData.PointLights[2].Color = XMFLOAT3(0.6f, 0.6f, 0.6f);
+    LightData.PointLights[2].Color = XMFLOAT3(0.9f, 0.6f, 0.6f);
     LightData.PointLights[2].Radius = 500.f;
 
     Context->UpdateSubresource(LightsConstantBuffer.Get(), 0, nullptr, &LightData, sizeof(LightData), 0);

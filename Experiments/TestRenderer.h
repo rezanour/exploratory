@@ -111,4 +111,6 @@ private:
 
     std::shared_ptr<Scene> TheScene;
     LightConstants LightData;
+
+    std::map<std::wstring, ComPtr<ID3D11ShaderResourceView>> CachedTextureMap;
 };
