@@ -367,15 +367,21 @@ bool TestRenderer::Initialize()
         return false;
     }
 
-    D3D11_INPUT_ELEMENT_DESC elems[3] {};
+    D3D11_INPUT_ELEMENT_DESC elems[5] {};
     elems[0].Format = DXGI_FORMAT_R32G32B32_FLOAT;
     elems[0].SemanticName = "POSITION";
     elems[1].AlignedByteOffset = sizeof(XMFLOAT3);
     elems[1].Format = DXGI_FORMAT_R32G32B32_FLOAT;
     elems[1].SemanticName = "NORMAL";
     elems[2].AlignedByteOffset = sizeof(XMFLOAT3) * 2;
-    elems[2].Format = DXGI_FORMAT_R32G32_FLOAT;
-    elems[2].SemanticName = "TEXCOORD";
+    elems[2].Format = DXGI_FORMAT_R32G32B32_FLOAT;
+    elems[2].SemanticName = "TANGENT";
+    elems[3].AlignedByteOffset = sizeof(XMFLOAT3) * 2;
+    elems[3].Format = DXGI_FORMAT_R32G32B32_FLOAT;
+    elems[3].SemanticName = "BITANGENT";
+    elems[4].AlignedByteOffset = sizeof(XMFLOAT3) * 4;
+    elems[4].Format = DXGI_FORMAT_R32G32_FLOAT;
+    elems[4].SemanticName = "TEXCOORD";
 
     hr = Device->CreateInputLayout(elems, _countof(elems), SimpleTransformVS, sizeof(SimpleTransformVS), &InputLayout);
     if (FAILED(hr))

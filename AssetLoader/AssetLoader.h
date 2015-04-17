@@ -14,6 +14,8 @@ struct ModelVertex
 {
     XMFLOAT3 Position;
     XMFLOAT3 Normal;
+    XMFLOAT3 Tangent;
+    XMFLOAT3 BiTangent;
     XMFLOAT2 TexCoord;
 };
 

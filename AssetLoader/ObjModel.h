@@ -50,6 +50,7 @@ struct ObjModel
 
 private:
     std::vector<XMFLOAT3> Positions;    // x, y, z
+    std::vector<XMFLOAT4> Tangents;     // may not be normalized
     std::vector<XMFLOAT3> Normals;      // may not be normalized
     std::vector<XMFLOAT2> TexCoords;    // u, v
 
@@ -61,4 +62,6 @@ private:
     void ReadTexCoord(const char* line);
     void ReadNormal(const char* line);
     void ReadFace(char* line, ObjModelPart* part);
+
+    void GenerateTangentSpace();
 };

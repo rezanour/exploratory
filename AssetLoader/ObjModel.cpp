@@ -163,6 +163,8 @@ bool ObjModel::Load(const wchar_t* filename)
         }
     }
 
+    GenerateTangentSpace();
+
     return true;
 }
 
@@ -526,4 +528,79 @@ bool ObjModel::LoadMaterials(const wchar_t* filename)
 
 
     return true;
+}
+
+void ObjModel::GenerateTangentSpace()
+{
+    std::vector<XMFLOAT3> tan1;
+    std::vector<XMFLOAT3> tan2;
+
+    tan1.resize(Vertices.size());
+    tan2.resize(Vertices.size());
+
+    for (auto obj : Objects)
+    {
+        for (auto part : obj.Parts)
+        {
+            for (uint32_t i = part.StartIndex; i < part.StartIndex + part.NumIndices; i += 3)
+            {
+                // Borrowed from Eric Lengyel at terathon.com (author of C4)
+                uint32_t i1 = Indices[i];
+                uint32_t i2 = Indices[i + 1];
+                uint32_t i3 = Indices[i + 2];
+
+                XMFLOAT3 v1 = Vertices[i1].Position;
+                XMFLOAT3 v2 = Vertices[i2].Position;
+                XMFLOAT3 v3 = Vertices[i3].Position;
+
+                XMFLOAT2 w1 = Vertices[i1].TexCoord;
+                XMFLOAT2 w2 = Vertices[i2].TexCoord;
+                XMFLOAT2 w3 = Vertices[i3].TexCoord;
+
+                float x1 = v2.x - v1.x;
+                float x2 = v3.x - v1.x;
+                float y1 = v2.y - v1.y;
+                float y2 = v3.y - v1.y;
+                float z1 = v2.z - v1.z;
+                float z2 = v3.z - v1.z;
+
+                float s1 = w2.x - w1.x;
+                float s2 = w3.x - w1.x;
+                float t1 = w2.y - w1.y;
+                float t2 = w3.y - w1.y;
+
+                float r = 1.f / (s1 * t2 - s2 * t1);
+                XMFLOAT3 sdirf(
+                    (t2 * x1 - t1 * x2) * r,
+                    (t2 * y1 - t1 * y2) * r,
+                    (t2 * z1 - t1 * z2) * r);
+                XMFLOAT3 tdirf(
+                    (s1 * x2 - s2 * x1) * r,
+                    (s1 * y2 - s2 * y1) * r,
+                    (s1 * z2 - s2 * z1) * r);
+
+                XMVECTOR sdir = XMLoadFloat3(&sdirf);
+                XMVECTOR tdir = XMLoadFloat3(&tdirf);
+
+                XMStoreFloat3(&tan1[i1], XMLoadFloat3(&tan1[i1]) + sdir);
+                XMStoreFloat3(&tan1[i2], XMLoadFloat3(&tan1[i2]) + sdir);
+                XMStoreFloat3(&tan1[i3], XMLoadFloat3(&tan1[i3]) + sdir);
+
+                XMStoreFloat3(&tan2[i1], XMLoadFloat3(&tan2[i1]) + tdir);
+                XMStoreFloat3(&tan2[i2], XMLoadFloat3(&tan2[i2]) + tdir);
+                XMStoreFloat3(&tan2[i3], XMLoadFloat3(&tan2[i3]) + tdir);
+            }
+        }
+    }
+
+    for (uint32_t i = 0; i < Vertices.size(); ++i)
+    {
+        XMVECTOR n = XMLoadFloat3(&Vertices[i].Normal);
+        XMVECTOR t = XMLoadFloat3(&tan1[i]);
+        XMVECTOR b = XMLoadFloat3(&tan2[i]);
+
+        XMVECTOR tangent = XMVector3Normalize(t - n * XMVector3Dot(n, t));
+        XMStoreFloat3(&Vertices[i].Tangent, tangent);
+        XMStoreFloat3(&Vertices[i].BiTangent, XMVector3Normalize(b));
+    }
 }

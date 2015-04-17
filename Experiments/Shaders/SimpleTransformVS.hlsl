@@ -15,6 +15,8 @@ struct VertexOut
     float4 Position : SV_POSITION;
     float3 WorldPosition : TEXCOORD0;
     float3 Normal : NORMAL;
+    float3 Tangent : TANGENT0;
+    float3 BiTangent : BITANGENT0;
     float2 TexCoord : TEXCOORD1;
 };
 
@@ -30,6 +32,8 @@ VertexOut main(StandardVertex input)
     // Assumes non-translate upperleft 3x3 submatrix of World
     // is orthonormal (simple rotation & scaling)
     output.Normal = mul((float3x3)World, input.Normal);
+    output.Tangent = mul((float3x3)World, input.Tangent);
+    output.BiTangent = mul((float3x3)World, input.BiTangent);
 
     output.TexCoord = input.TexCoord;
 

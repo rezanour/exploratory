@@ -39,6 +39,7 @@ bool SaveTexture(const std::wstring& assetFilename, const std::wstring& outputFi
 
     if (saveDerivativeMap)
     {
+#if 0 // Build normal maps instead
         ScratchImage originalImage(std::move(image));
 
         if (metadata.format != DXGI_FORMAT_R8_UNORM)
@@ -74,6 +75,18 @@ bool SaveTexture(const std::wstring& assetFilename, const std::wstring& outputFi
                 pDst[y * metadata.width + x] = ((uint16_t)(dy * 255.f) << 8) | (uint16_t)(dx * 255.f);
             }
         }
+#else
+        ScratchImage originalImage(std::move(image));
+
+        hr = ComputeNormalMap(originalImage.GetImages(), originalImage.GetImageCount(),
+                              metadata, CNMAP_DEFAULT, 10.f,
+                              DXGI_FORMAT_R8G8B8A8_UNORM, image);
+        if (FAILED(hr))
+        {
+            LogError(L"Failed to create intermediate derivative map.");
+            return false;
+        }
+#endif
     }
     else if (expandChannels && metadata.format == DXGI_FORMAT_R8_UNORM)
     {

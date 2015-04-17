@@ -10,6 +10,8 @@ struct PixelShaderInput
     float4 Position : SV_POSITION;
     float3 WorldPosition : TEXCOORD0;
     float3 Normal : NORMAL;
+    float3 Tangent : TANGENT0;
+    float3 BiTangent : BITANGENT0;
     float2 TexCoord : TEXCOORD1;
 };
 
@@ -47,6 +49,9 @@ float4 main(PixelShaderInput input) : SV_TARGET
     // TODO: take in material roughness.
     const float Roughness = 0.6f;   // Medium roughness
 
+#if 0
+    return DiffuseMap.Sample(Sampler, input.TexCoord);
+#else
     float4 albedo = DiffuseMap.Sample(Sampler, input.TexCoord);
 
     // if alpha tested texture, clip out anything near fully transparent
@@ -57,11 +62,18 @@ float4 main(PixelShaderInput input) : SV_TARGET
     float width, height, numLevels;
     DerivativeMap.GetDimensions(0, width, height, numLevels);
 
-    float2 normalSample = DerivativeMap.Sample(Sampler, input.TexCoord).xy * 2 - 1;
+    float3 normalSample = DerivativeMap.Sample(Sampler, input.TexCoord).xyz * 2 - 1;
 
-    float3 N = Deriv_ComputeNormal(
-        input.WorldPosition, input.Normal, input.TexCoord,
-        uint2(width, height), normalSample);
+    //float3 N = Deriv_ComputeNormal(
+    //    input.WorldPosition, input.Normal, input.TexCoord,
+    //    uint2(width, height), normalSample);
+
+    float3 N = input.Normal;
+    if (normalSample.x > 0 || normalSample.y > 0 || normalSample.z > 0)
+    {
+        float3x3 tangentToWorld = float3x3(input.Tangent, input.BiTangent, input.Normal);
+            N = normalize(mul(normalSample, tangentToWorld));
+    }
 
     float3 specularColor = SpecularMap.Sample(Sampler, input.TexCoord).xyz;
 
@@ -90,4 +102,5 @@ float4 main(PixelShaderInput input) : SV_TARGET
     }
 
     return float4(diffuse + specular, albedo.a);
+#endif
 }
