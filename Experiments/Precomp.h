@@ -34,3 +34,10 @@ using namespace DirectX;
 #include <wrl.h>
 using namespace Microsoft::WRL;
 using namespace Microsoft::WRL::Wrappers;
+
+// Our own utility headers that change infrequently
+#include "NonCopyable.h"
+#include "Debug.h"
+
+#define CheckResult(x) { HRESULT _hr = (x); if (FAILED(_hr)) { LogError(L#x L" failed with hr = 0x%08x.", _hr); return false; }}
+

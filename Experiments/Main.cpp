@@ -2,6 +2,7 @@
 #include "Debug.h"
 #include "Renderer.h"
 #include "TestRenderer.h"
+#include "DeferredRenderer11.h"
 
 // Constants
 static const wchar_t ClassName[] = L"Experiments Test Application";
@@ -36,19 +37,20 @@ int WINAPI WinMain(HINSTANCE instance, HINSTANCE, LPSTR, int)
     }
 
     // Initialize graphics
-    std::unique_ptr<TestRenderer> renderer(TestRenderer::Create(Window));
+    //std::unique_ptr<TestRenderer> renderer(TestRenderer::Create(Window));
+    std::unique_ptr<DeferredRenderer11> renderer(DeferredRenderer11::Create(Window));
     if (!renderer)
     {
         assert(false);
         return -4;
     }
 
-    if (!renderer->AddMeshes(L"../ProcessedContent/", L"crytek-sponza/sponza.model"))
+    //if (!renderer->AddMeshes(L"../ProcessedContent/", L"crytek-sponza/sponza.model"))
     //if (!renderer->AddMeshes(L"../ProcessedContent/", L"sibenik/sibenik.model"))
-    {
-        assert(false);
-        return -5;
-    }
+    //{
+    //    assert(false);
+    //    return -5;
+    //}
 
     ShowWindow(Window, SW_SHOW);
     UpdateWindow(Window);
@@ -58,6 +60,8 @@ int WINAPI WinMain(HINSTANCE instance, HINSTANCE, LPSTR, int)
     LARGE_INTEGER currTime {};
     LARGE_INTEGER frequency {};
     QueryPerformanceFrequency(&frequency);
+
+    // Clear Color
 
     // TODO: Replace with something better as needed
 
@@ -183,7 +187,8 @@ int WINAPI WinMain(HINSTANCE instance, HINSTANCE, LPSTR, int)
             up = XMVector3TransformNormal(XMVectorSet(0.f, 1.f, 0.f, 0.f), XMMatrixRotationAxis(right, pitch));
             forward = XMVector3Cross(up, right);
 
-            renderer->Render(position, XMMatrixLookToRH(position, forward, up), projection, VSyncEnabled);
+            //renderer->Render(position, XMMatrixLookToRH(position, forward, up), projection, VSyncEnabled);
+            renderer->Render(XMMatrixLookToRH(position, forward, up), projection, VSyncEnabled);
 
             swprintf_s(caption, L"%s (%dx%d) - FPS: %3.2f", ClassName, ScreenWidth, ScreenHeight, frameRate);
             SetWindowText(Window, caption);
