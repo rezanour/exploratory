@@ -3,7 +3,8 @@
 // Types of vertex layouts
 enum class VertexType
 {
-    Standard = 0,
+    Standard = 0,       // Standard 3D vertex with tangent space info
+    PostProjection,     // Used by fullscreen effects or quad rendering
     Count
 };
 
@@ -21,6 +22,13 @@ struct StandardVertex
     XMFLOAT3 Normal;
     XMFLOAT3 Tangent;
     XMFLOAT3 BiTangent;
+    XMFLOAT2 TexCoord;
+};
+
+// normalized post-projection space. For D3D, that's x and y in [-1, 1], with -y being down
+struct PostProjectionVertex
+{
+    XMFLOAT2 Position;
     XMFLOAT2 TexCoord;
 };
 
@@ -70,7 +78,6 @@ struct GeoMesh
 {
     std::shared_ptr<GeometryPool> Pool;
     uint32_t BaseVertex;
-    uint32_t NumVertices;
     uint32_t BaseIndex;
     uint32_t NumIndices;
 };

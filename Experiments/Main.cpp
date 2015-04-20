@@ -45,12 +45,13 @@ int WINAPI WinMain(HINSTANCE instance, HINSTANCE, LPSTR, int)
         return -4;
     }
 
+    if (!renderer->AddObjects(L"../ProcessedContent/", L"crytek-sponza/sponza.model"))
     //if (!renderer->AddMeshes(L"../ProcessedContent/", L"crytek-sponza/sponza.model"))
     //if (!renderer->AddMeshes(L"../ProcessedContent/", L"sibenik/sibenik.model"))
-    //{
-    //    assert(false);
-    //    return -5;
-    //}
+    {
+        assert(false);
+        return -5;
+    }
 
     ShowWindow(Window, SW_SHOW);
     UpdateWindow(Window);
