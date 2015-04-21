@@ -1,14 +1,14 @@
 #include "Precomp.h"
 #include "Debug.h"
-#include "Renderer.h"
 #include "TestRenderer.h"
 #include "DeferredRenderer11.h"
 #include "ContentLoader.h"
+#include "Renderer.h"
 
 // Constants
 static const wchar_t ClassName[] = L"Experiments Test Application";
-static const uint32_t ScreenWidth = 1920;
-static const uint32_t ScreenHeight = 1080;
+static const uint32_t ScreenWidth = 1280;
+static const uint32_t ScreenHeight = 720;
 static const float Fov = XMConvertToRadians(70.f);
 static const float NearClip = 0.5f;
 static const float FarClip = 10000.f;
@@ -38,8 +38,12 @@ int WINAPI WinMain(HINSTANCE instance, HINSTANCE, LPSTR, int)
     }
 
     // Initialize graphics
+#ifdef ENABLE_DX12_SUPPORT
+    std::unique_ptr<Renderer> renderer(Renderer::Create(Window));
+#else
     //std::unique_ptr<TestRenderer> renderer(TestRenderer::Create(Window));
     std::unique_ptr<DeferredRenderer11> renderer(DeferredRenderer11::Create(Window));
+#endif
     if (!renderer)
     {
         assert(false);

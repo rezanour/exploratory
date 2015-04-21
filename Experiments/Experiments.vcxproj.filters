@@ -99,5 +99,8 @@
     <FxCompile Include="Shaders\ClipSpacePassthroughVS.hlsl">
       <Filter>Shaders</Filter>
     </FxCompile>
+    <FxCompile Include="Shaders\SimplePS.hlsl">
+      <Filter>Shaders</Filter>
+    </FxCompile>
   </ItemGroup>
 </Project>
