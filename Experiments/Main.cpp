@@ -50,18 +50,23 @@ int WINAPI WinMain(HINSTANCE instance, HINSTANCE, LPSTR, int)
         return -4;
     }
 
+#ifdef ENABLE_DX12_SUPPORT
+    if (!renderer->AddMeshes(L"../ProcessedContent/", L"crytek-sponza/sponza.model"))
+    {
+        assert(false);
+        return -5;
+    }
+#else
     std::shared_ptr<ContentLoader> contentLoader = std::make_shared<ContentLoader>(renderer->GetDevice(), L"../ProcessedContent/");
 
-    //if (!renderer->AddMeshes(L"../ProcessedContent/", L"crytek-sponza/sponza.model"))
-    //if (!renderer->AddMeshes(L"../ProcessedContent/", L"sibenik/sibenik.model"))
     std::shared_ptr<Object> level;
     if (!contentLoader->LoadObject(L"crytek-sponza/sponza.model", &level))
     {
         assert(false);
         return -5;
     }
-
     renderer->AddObject(level);
+#endif
 
     ShowWindow(Window, SW_SHOW);
     UpdateWindow(Window);
@@ -196,8 +201,11 @@ int WINAPI WinMain(HINSTANCE instance, HINSTANCE, LPSTR, int)
             up = XMVector3TransformNormal(XMVectorSet(0.f, 1.f, 0.f, 0.f), XMMatrixRotationAxis(right, pitch));
             forward = XMVector3Cross(up, right);
 
-            //renderer->Render(position, XMMatrixLookToRH(position, forward, up), projection, VSyncEnabled);
+#ifdef ENABLE_DX12_SUPPORT
+            renderer->Render(position, XMMatrixLookToRH(position, forward, up), projection, VSyncEnabled);
+#else
             renderer->Render(XMMatrixLookToRH(position, forward, up), projection, VSyncEnabled);
+#endif
 
             swprintf_s(caption, L"%s (%dx%d) - FPS: %3.2f", ClassName, ScreenWidth, ScreenHeight, frameRate);
             SetWindowText(Window, caption);
