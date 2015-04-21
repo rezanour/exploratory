@@ -151,7 +151,7 @@ bool Renderer::Initialize()
     };
 
     CD3D12_DEPTH_STENCIL_DESC depthStencilDesc(
-        FALSE,
+        TRUE,
         D3D12_DEPTH_WRITE_MASK_ALL,
         D3D12_COMPARISON_LESS,
         FALSE,
@@ -168,8 +168,8 @@ bool Renderer::Initialize()
     );
 
     CD3D12_RASTERIZER_DESC rasterizerDesc(
-        D3D12_FILL_WIREFRAME,
-        D3D12_CULL_NONE,
+        D3D12_FILL_SOLID,
+        D3D12_CULL_BACK,
         TRUE,
         D3D12_DEFAULT_DEPTH_BIAS,
         D3D12_DEFAULT_DEPTH_BIAS_CLAMP,
