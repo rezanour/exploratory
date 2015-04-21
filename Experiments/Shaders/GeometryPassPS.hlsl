@@ -35,11 +35,14 @@ RenderTargetOut main(VertexIn input)
     // Albedo
     output.Color = AlbedoMap.Sample(LinearWrapSampler, input.TexCoord);
 
+    clip(output.Color.a - 0.1);
+
     // Normal
     float3 N = NormalMap.Sample(LinearWrapSampler, input.TexCoord).xyz;
     if (any(N))
     {
         N = N * 2 - 1;
+        N.y *= -1;
     }
     else
     {
@@ -54,9 +57,10 @@ RenderTargetOut main(VertexIn input)
     {
         output.SpecularRoughness.xyz = float3(0.5f, 0.5f, 0.5f);
     }
+    output.SpecularRoughness.w = 0.7f;
 
     // TODO: implement
-    output.LightAccum = float4(float3(0.1f, 0.1f, 0.1f), 0.f);
+    output.LightAccum = float4(0, 0, 0, 0);// float4(float3(0.1f, 0.1f, 0.1f), 0.f);
 
     return output;
 }

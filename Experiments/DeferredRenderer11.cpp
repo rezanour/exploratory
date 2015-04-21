@@ -4,7 +4,8 @@
 #include "Object.h"
 #include "Shaders/GeometryPassVS.h"
 #include "Shaders/GeometryPassPS.h"
-#include "Shaders/PostProjectionPassthroughVS.h"
+#include "Shaders/ClipSpacePassthroughVS.h"
+#include "Shaders/DirectionalLightsPS.h"
 #include "Shaders/DbgRenderDepthPS.h"
 
 ID3D11ShaderResourceView* const  DeferredRenderer11::NullSRVs[8] {};
@@ -29,174 +30,11 @@ DeferredRenderer11::DeferredRenderer11()
     ZeroMemory(RenderTargets, sizeof(RenderTargets));
     ZeroMemory(NumShaderResources, sizeof(NumShaderResources));
     ZeroMemory(NumRenderTargets, sizeof(NumRenderTargets));
+    ZeroMemory(&Viewport, sizeof(Viewport));
 }
 
 DeferredRenderer11::~DeferredRenderer11()
 {
-}
-
-bool DeferredRenderer11::AddObjects(const std::wstring& contentRoot, const std::wstring& modelFilename)
-{
-    static_assert(sizeof(ModelVertex) == sizeof(StandardVertex), "Make sure structures (and padding) match so we can read directly!");
-
-    FileHandle modelFile(CreateFile((contentRoot + modelFilename).c_str(), GENERIC_READ,
-        FILE_SHARE_READ, nullptr, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr));
-    if (!modelFile.IsValid())
-    {
-        LogError(L"Failed to open asset file.");
-        return false;
-    }
-
-    DWORD bytesRead{};
-    ModelHeader header{};
-    if (!ReadFile(modelFile.Get(), &header, sizeof(header), &bytesRead, nullptr))
-    {
-        LogError(L"Failed to read file.");
-        return false;
-    }
-
-    if (header.Signature != header.ExpectedSignature)
-    {
-        LogError(L"Invalid model file.");
-        return false;
-    }
-
-    uint32_t baseVertex = 0;
-    uint32_t baseIndex = 0;
-
-    std::shared_ptr<GeometryPool> pool = GeometryPool::Create(Device, VertexType::Standard, header.NumVertices, header.NumIndices);
-    if (!pool->ReserveRange(header.NumVertices, header.NumIndices, &baseVertex, &baseIndex))
-    {
-        LogError(L"Not enough room in geo pool.");
-        return false;
-    }
-
-    GeometryPools.push_back(pool);
-
-    std::unique_ptr<StandardVertex[]> vertices(new StandardVertex[header.NumVertices]);
-    if (!ReadFile(modelFile.Get(), vertices.get(), header.NumVertices * sizeof(StandardVertex), &bytesRead, nullptr))
-    {
-        LogError(L"Failed to read file.");
-        return false;
-    }
-
-    D3D11_BOX box{};
-    box.right = header.NumVertices * sizeof(StandardVertex);
-    box.bottom = 1;
-    box.back = 1;
-
-    Context->UpdateSubresource(pool->GetVertexBuffer().Get(), 0, &box, vertices.get(), header.NumVertices * sizeof(StandardVertex), 0);
-
-    // Free up memory
-    vertices.reset();
-
-    std::unique_ptr<uint32_t[]> indices(new uint32_t[header.NumIndices]);
-    if (!ReadFile(modelFile.Get(), indices.get(), header.NumIndices * sizeof(uint32_t), &bytesRead, nullptr))
-    {
-        LogError(L"Failed to read file.");
-        return false;
-    }
-
-    box.right = header.NumIndices * sizeof(uint32_t);
-
-    Context->UpdateSubresource(pool->GetIndexBuffer().Get(), 0, &box, indices.get(), header.NumIndices * sizeof(uint32_t), 0);
-
-    // Free up memory
-    indices.reset();
-
-    // Load objects
-    for (int iObj = 0; iObj < (int)header.NumObjects; ++iObj)
-    {
-        ModelObject object{};
-        if (!ReadFile(modelFile.Get(), &object, sizeof(object), &bytesRead, nullptr))
-        {
-            LogError(L"Failed to read file.");
-            return false;
-        }
-
-        std::shared_ptr<Object> obj = std::make_shared<Object>();
-        Objects.push_back(obj);
-
-        XMStoreFloat4x4(&obj->RootTransform, XMMatrixIdentity());
-
-        for (int iPart = 0; iPart < (int)object.NumParts; ++iPart)
-        {
-            ModelPart part{};
-            if (!ReadFile(modelFile.Get(), &part, sizeof(part), &bytesRead, nullptr))
-            {
-                LogError(L"Failed to read file.");
-                return false;
-            }
-
-            std::shared_ptr<Object::Part> meshPart = std::make_shared<Object::Part>();
-            obj->Parts.push_back(meshPart);
-
-            XMStoreFloat4x4(&meshPart->RelativeTransform, XMMatrixIdentity());
-
-            meshPart->Mesh = std::make_shared<GeoMesh>();
-            meshPart->Mesh->Pool = pool;
-            meshPart->Mesh->BaseIndex = part.StartIndex;
-            meshPart->Mesh->NumIndices = part.NumIndices;
-            meshPart->Mesh->BaseVertex = baseVertex;
-
-            if (part.DiffuseTexture[0] != 0)
-            {
-                std::wstring path = contentRoot + part.DiffuseTexture;
-                auto it = CachedTextureMap.find(path);
-                if (it == CachedTextureMap.end())
-                {
-                    if (!LoadTexture(path, &meshPart->AlbedoSRV))
-                    {
-                        LogError(L"Failed to load texture.");
-                        return false;
-                    }
-                    CachedTextureMap[path] = meshPart->AlbedoSRV;
-                }
-                else
-                {
-                    meshPart->AlbedoSRV = it->second;
-                }
-            }
-            if (part.NormalTexture[0] != 0)
-            {
-                std::wstring path = contentRoot + part.NormalTexture;
-                auto it = CachedTextureMap.find(path);
-                if (it == CachedTextureMap.end())
-                {
-                    if (!LoadTexture(path, &meshPart->NormalSRV))
-                    {
-                        LogError(L"Failed to load texture.");
-                        return false;
-                    }
-                    CachedTextureMap[path] = meshPart->NormalSRV;
-                }
-                else
-                {
-                    meshPart->NormalSRV = it->second;
-                }
-            }
-            if (part.SpecularTexture[0] != 0)
-            {
-                std::wstring path = contentRoot + part.SpecularTexture;
-                auto it = CachedTextureMap.find(path);
-                if (it == CachedTextureMap.end())
-                {
-                    if (!LoadTexture(path, &meshPart->SpecularSRV))
-                    {
-                        LogError(L"Failed to load texture.");
-                        return false;
-                    }
-                    CachedTextureMap[path] = meshPart->SpecularSRV;
-                }
-                else
-                {
-                    meshPart->SpecularSRV = it->second;
-                }
-            }
-        }
-    }
-
-    return true;
 }
 
 bool DeferredRenderer11::Render(FXMMATRIX view, FXMMATRIX projection, bool vsync)
@@ -213,14 +51,15 @@ bool DeferredRenderer11::Render(FXMMATRIX view, FXMMATRIX projection, bool vsync
 
     Context->ClearDepthStencilView(DepthStencilView.Get(), D3D11_CLEAR_DEPTH | D3D11_CLEAR_STENCIL, 1.f, 0);
 
+    Context->PSSetSamplers(0, 1, LinearWrapSampler.GetAddressOf());
+    Context->PSSetSamplers(1, 1, PointClampSampler.GetAddressOf());
+
     ////////////////////////////////
     // Geometry pass
 
     ApplyPass(PassType::Geometry, DepthStencilView);
 
     Context->VSSetConstantBuffers(0, 1, GeometryCB.GetAddressOf());
-    Context->PSSetSamplers(0, 1, LinearWrapSampler.GetAddressOf());
-    Context->PSSetSamplers(1, 1, PointClampSampler.GetAddressOf());
 
     GeometryVSConstants constants;
     XMStoreFloat4x4(&constants.View, view);
@@ -247,15 +86,28 @@ bool DeferredRenderer11::Render(FXMMATRIX view, FXMMATRIX projection, bool vsync
     }
 
     ////////////////////////////////
-    // Debug display depth
+    // Geometry pass
 
-    ApplyPass(PassType::DebugDisplayDepth, nullptr);
+    ApplyPass(PassType::DirectionalLighting, nullptr);
+
+    Context->PSSetConstantBuffers(0, 1, DLightCB.GetAddressOf());
+
+    XMVECTOR det;
+
+    DLightPSConstants dLightConstants;
+    dLightConstants.NumLights = 1;
+    XMStoreFloat3(&dLightConstants.Lights[0].Dir, XMVector3TransformNormal(XMVector3Normalize(XMVectorSet(1.f, 1.f, 1.f, 0.f)), view));
+    dLightConstants.Lights[0].Color = XMFLOAT3(1.f, 1.f, 1.f);
+    dLightConstants.InvViewportSize.x = 1.f / Viewport.Width;
+    dLightConstants.InvViewportSize.y = 1.f / Viewport.Height;
+    XMStoreFloat4x4(&dLightConstants.InvProjection, XMMatrixInverse(&det, projection));
+    Context->UpdateSubresource(DLightCB.Get(), 0, nullptr, &dLightConstants, sizeof(dLightConstants), 0);
 
     BindGeometryPool(FullscreenQuad->Pool);
     DrawMesh(FullscreenQuad);
 
     //Context->CopyResource(GBuffer[(uint32_t)GBufferSlice::LightAccum].Get(), GBuffer[(uint32_t)GBufferSlice::Color].Get());
-    Context->CopyResource(GBuffer[(uint32_t)GBufferSlice::LightAccum].Get(), GBuffer[(uint32_t)GBufferSlice::Normals].Get());
+    //Context->CopyResource(GBuffer[(uint32_t)GBufferSlice::LightAccum].Get(), GBuffer[(uint32_t)GBufferSlice::Normals].Get());
     //Context->CopyResource(GBuffer[(uint32_t)GBufferSlice::LightAccum].Get(), GBuffer[(uint32_t)GBufferSlice::SpecularRoughness].Get());
 
     CheckResult(SwapChain->Present(vsync ? 1 : 0, 0));
@@ -292,16 +144,15 @@ bool DeferredRenderer11::Initialize(HWND window)
     scd.Width = rcClient.right - rcClient.left;
     scd.Height = rcClient.bottom - rcClient.top;
     scd.SampleDesc.Count = 1;
-    scd.SwapEffect = DXGI_SWAP_EFFECT_FLIP_SEQUENTIAL;
+    scd.SwapEffect = DXGI_SWAP_EFFECT_DISCARD;
 
     CheckResult(dxgiFactory->CreateSwapChainForHwnd(Device.Get(), window, &scd,
         nullptr, nullptr, &SwapChain));
 
-    D3D11_VIEWPORT vp{};
-    vp.Width = (float)scd.Width;
-    vp.Height = (float)scd.Height;
-    vp.MaxDepth = 1.f;
-    Context->RSSetViewports(1, &vp);
+    Viewport.Width = (float)scd.Width;
+    Viewport.Height = (float)scd.Height;
+    Viewport.MaxDepth = 1.f;
+    Context->RSSetViewports(1, &Viewport);
 
     if (!CreateStateObjects())
     {
@@ -328,8 +179,13 @@ bool DeferredRenderer11::Initialize(HWND window)
 
     CheckResult(Device->CreateBuffer(&bd, nullptr, &GeometryCB));
 
+    bd.ByteWidth = sizeof(DLightPSConstants);
+    bd.StructureByteStride = sizeof(DLightPSConstants);
+
+    CheckResult(Device->CreateBuffer(&bd, nullptr, &DLightCB));
+
     // Create fullscreen quad
-    PostProjectionVertex verts[] =
+    ClipSpace2DVertex verts[] =
     {
         { XMFLOAT2(-1, 1),  XMFLOAT2(0.f, 0.f) },
         { XMFLOAT2(-1, -1), XMFLOAT2(0.f, 1.f) },
@@ -342,26 +198,25 @@ bool DeferredRenderer11::Initialize(HWND window)
         0, 1, 2, 0, 2, 3
     };
 
-    GeometryPools.push_back(GeometryPool::Create(Device, VertexType::PostProjection, 1024, 1024));
-
     FullscreenQuad = std::make_shared<GeoMesh>();
-    if (!GeometryPools.front()->ReserveRange(_countof(verts), _countof(indices), &FullscreenQuad->BaseVertex, &FullscreenQuad->BaseIndex))
+    FullscreenQuad->Pool = GeometryPool::Create(Device, VertexType::ClipSpace2D, 1024, 1024);
+
+    if (!FullscreenQuad->Pool->ReserveRange(_countof(verts), _countof(indices), &FullscreenQuad->BaseVertex, &FullscreenQuad->BaseIndex))
     {
         assert(false);
         return false;
     }
 
-    FullscreenQuad->Pool = GeometryPools.front();
     FullscreenQuad->NumIndices = _countof(indices);
 
     D3D11_BOX box{};
-    box.right = _countof(verts) * sizeof(PostProjectionVertex);
+    box.right = _countof(verts) * sizeof(ClipSpace2DVertex);
     box.bottom = 1;
     box.back = 1;
-    Context->UpdateSubresource(GeometryPools.front()->GetVertexBuffer().Get(), 0, &box, &verts, sizeof(verts), 0);
+    Context->UpdateSubresource(FullscreenQuad->Pool->GetVertexBuffer().Get(), 0, &box, &verts, sizeof(verts), 0);
 
     box.right = FullscreenQuad->NumIndices * sizeof(uint32_t);
-    Context->UpdateSubresource(GeometryPools.front()->GetIndexBuffer().Get(), 0, &box, &indices, sizeof(indices), 0);
+    Context->UpdateSubresource(FullscreenQuad->Pool->GetIndexBuffer().Get(), 0, &box, &indices, sizeof(indices), 0);
 
     return true;
 }
@@ -390,6 +245,18 @@ bool DeferredRenderer11::CreateStateObjects()
     sd.AddressW = D3D11_TEXTURE_ADDRESS_CLAMP;
     sd.Filter = D3D11_FILTER_MIN_MAG_MIP_POINT;
     CheckResult(Device->CreateSamplerState(&sd, &PointClampSampler));
+
+    // Create BlendStates
+    D3D11_BLEND_DESC bd{};
+    bd.RenderTarget[0].BlendEnable = TRUE;
+    bd.RenderTarget[0].BlendOp = D3D11_BLEND_OP_ADD;
+    bd.RenderTarget[0].BlendOpAlpha = D3D11_BLEND_OP_ADD;
+    bd.RenderTarget[0].SrcBlend = D3D11_BLEND_ONE;
+    bd.RenderTarget[0].SrcBlendAlpha = D3D11_BLEND_ONE;
+    bd.RenderTarget[0].DestBlend = D3D11_BLEND_ONE;
+    bd.RenderTarget[0].DestBlendAlpha = D3D11_BLEND_ONE;
+    bd.RenderTarget[0].RenderTargetWriteMask = D3D11_COLOR_WRITE_ENABLE_ALL;
+    CheckResult(Device->CreateBlendState(&bd, &AdditiveBlendState));
 
     return true;
 }
@@ -448,120 +315,27 @@ bool DeferredRenderer11::InitializePasses()
     RenderTargets[(uint32_t)PassType::Geometry][3] = GBufferRTV[(uint32_t)GBufferSlice::Color].Get();
     NumRenderTargets[(uint32_t)PassType::Geometry] = 4;
 
+    // Directional Lights Pass
+    CheckResult(Device->CreateVertexShader(ClipSpacePassthroughVS, sizeof(ClipSpacePassthroughVS), nullptr, &VertexShader[(uint32_t)PassType::DirectionalLighting]));
+    CheckResult(Device->CreatePixelShader(DirectionalLightsPS, sizeof(DirectionalLightsPS), nullptr, &PixelShader[(uint32_t)PassType::DirectionalLighting]));
+    CheckResult(Device->CreateInputLayout(VertexElements[(uint32_t)VertexType::ClipSpace2D], VertexElementCount[(uint32_t)VertexType::ClipSpace2D], ClipSpacePassthroughVS, sizeof(ClipSpacePassthroughVS), &InputLayout[(uint32_t)PassType::DirectionalLighting]));
+    PSShaderResources[(uint32_t)PassType::DirectionalLighting][0] = DepthStencilSRV.Get();
+    PSShaderResources[(uint32_t)PassType::DirectionalLighting][1] = GBufferSRV[(uint32_t)GBufferSlice::Normals].Get();
+    PSShaderResources[(uint32_t)PassType::DirectionalLighting][2] = GBufferSRV[(uint32_t)GBufferSlice::SpecularRoughness].Get();
+    PSShaderResources[(uint32_t)PassType::DirectionalLighting][3] = GBufferSRV[(uint32_t)GBufferSlice::Color].Get();
+    NumShaderResources[(uint32_t)PassType::DirectionalLighting] = 4;
+    RenderTargets[(uint32_t)PassType::DirectionalLighting][0] = GBufferRTV[(uint32_t)GBufferSlice::LightAccum].Get();
+    NumRenderTargets[(uint32_t)PassType::DirectionalLighting] = 1;
+    BlendStates[(uint32_t)PassType::DirectionalLighting] = AdditiveBlendState;
+
     // Dbg Render Depth Pass
-    CheckResult(Device->CreateVertexShader(PostProjectionPassthroughVS, sizeof(PostProjectionPassthroughVS), nullptr, &VertexShader[(uint32_t)PassType::DebugDisplayDepth]));
+    CheckResult(Device->CreateVertexShader(ClipSpacePassthroughVS, sizeof(ClipSpacePassthroughVS), nullptr, &VertexShader[(uint32_t)PassType::DebugDisplayDepth]));
     CheckResult(Device->CreatePixelShader(DbgRenderDepthPS, sizeof(DbgRenderDepthPS), nullptr, &PixelShader[(uint32_t)PassType::DebugDisplayDepth]));
-    CheckResult(Device->CreateInputLayout(VertexElements[(uint32_t)VertexType::PostProjection], VertexElementCount[(uint32_t)VertexType::PostProjection], PostProjectionPassthroughVS, sizeof(PostProjectionPassthroughVS), &InputLayout[(uint32_t)PassType::DebugDisplayDepth]));
+    CheckResult(Device->CreateInputLayout(VertexElements[(uint32_t)VertexType::ClipSpace2D], VertexElementCount[(uint32_t)VertexType::ClipSpace2D], ClipSpacePassthroughVS, sizeof(ClipSpacePassthroughVS), &InputLayout[(uint32_t)PassType::DebugDisplayDepth]));
     PSShaderResources[(uint32_t)PassType::DebugDisplayDepth][0] = DepthStencilSRV.Get();
     NumShaderResources[(uint32_t)PassType::DebugDisplayDepth] = 1;
     RenderTargets[(uint32_t)PassType::DebugDisplayDepth][0] = GBufferRTV[(uint32_t)GBufferSlice::LightAccum].Get();
     NumRenderTargets[(uint32_t)PassType::DebugDisplayDepth] = 1;
-
-    return true;
-}
-
-bool DeferredRenderer11::LoadTexture(const std::wstring& filename, ID3D11ShaderResourceView** srv)
-{
-    FileHandle texFile(CreateFile(filename.c_str(), GENERIC_READ,
-        FILE_SHARE_READ, nullptr, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr));
-    if (!texFile.IsValid())
-    {
-        LogError(L"Failed to open texture.");
-        return false;
-    }
-
-    DWORD bytesRead{};
-    uint32_t fileSize = GetFileSize(texFile.Get(), nullptr);
-
-    TextureHeader texHeader{};
-    if (!ReadFile(texFile.Get(), &texHeader, sizeof(texHeader), &bytesRead, nullptr))
-    {
-        LogError(L"Failed to read texture.");
-        return false;
-    }
-
-    if (texHeader.Signature != TextureHeader::ExpectedSignature)
-    {
-        LogError(L"Invalid texture file.");
-        return false;
-    }
-
-    uint32_t pixelDataSize = fileSize - sizeof(TextureHeader);
-    std::unique_ptr<uint8_t[]> pixelData(new uint8_t[pixelDataSize]);
-    if (!ReadFile(texFile.Get(), pixelData.get(), pixelDataSize, &bytesRead, nullptr))
-    {
-        LogError(L"Failed to read texture data.");
-        return false;
-    }
-
-    D3D11_TEXTURE2D_DESC td{};
-    td.ArraySize = texHeader.ArrayCount;
-    td.Format = texHeader.Format;
-#if USE_SRGB
-    if (td.Format == DXGI_FORMAT_R8G8B8A8_UNORM)
-    {
-        td.Format = DXGI_FORMAT_R8G8B8A8_UNORM_SRGB;
-    }
-    else if (td.Format == DXGI_FORMAT_B8G8R8A8_UNORM)
-    {
-        td.Format = DXGI_FORMAT_B8G8R8A8_UNORM_SRGB;
-    }
-#endif
-    td.Width = texHeader.Width;
-    td.Height = texHeader.Height;
-    td.MipLevels = texHeader.MipLevels;
-    td.BindFlags = D3D11_BIND_SHADER_RESOURCE;
-    td.SampleDesc.Count = 1;
-    td.Usage = D3D11_USAGE_DEFAULT;
-
-    D3D11_SUBRESOURCE_DATA init[20] {};
-    uint32_t bpp = (uint32_t)BitsPerPixel(td.Format) / 8;
-
-    ComPtr<ID3D11Texture2D> texture;
-    HRESULT hr = S_OK;
-
-    // Only try to use mips if width & height are the same size
-    if (td.Width == td.Height && td.MipLevels > 1)
-    {
-        uint32_t width = td.Width;
-        uint32_t height = td.Height;
-        uint8_t* pPixels = pixelData.get();
-
-        for (int m = 0; m < (int)td.MipLevels; ++m)
-        {
-            init[m].pSysMem = pPixels;
-            init[m].SysMemPitch = width * bpp;
-            init[m].SysMemSlicePitch = width * height * bpp;
-
-            width >>= 1;
-            height >>= 1;
-            pPixels += init[m].SysMemSlicePitch;
-        }
-
-        hr = Device->CreateTexture2D(&td, init, &texture);
-    }
-    else
-    {
-        td.MipLevels = 1;
-
-        init[0].pSysMem = pixelData.get();
-        init[0].SysMemPitch = td.Width * bpp;
-        init[0].SysMemSlicePitch = td.Width * td.Height * bpp;
-
-        hr = Device->CreateTexture2D(&td, init, &texture);
-    }
-    if (FAILED(hr))
-    {
-        LogError(L"Failed to create texture.");
-        return false;
-    }
-
-    hr = Device->CreateShaderResourceView(texture.Get(), nullptr, srv);
-    if (FAILED(hr))
-    {
-        LogError(L"Failed to create texture SRV.");
-        return false;
-    }
 
     return true;
 }
@@ -592,8 +366,8 @@ void DeferredRenderer11::ApplyPass(PassType type, const ComPtr<ID3D11DepthStenci
     Context->OMSetRenderTargets(NumRenderTargets[typeIndex], RenderTargets[typeIndex], dsv.Get());
 
     //// Bind state objects
-    //static const float BlendFactor[] = { 1.f, 1.f, 1.f, 1.f };
-    //Context->OMSetBlendState(pass.BlendState, BlendFactor, D3D11_DEFAULT_SAMPLE_MASK);
+    static const float BlendFactor[] = { 1.f, 1.f, 1.f, 1.f };
+    Context->OMSetBlendState(BlendStates[typeIndex].Get(), BlendFactor, D3D11_DEFAULT_SAMPLE_MASK);
 
     Context->RSSetState(RasterizerState.Get());
 }

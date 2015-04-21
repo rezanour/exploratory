@@ -42,6 +42,9 @@
     <ClInclude Include="Object.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="ContentLoader.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="Debug.cpp">
@@ -65,6 +68,9 @@
     <ClCompile Include="Geometry.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="ContentLoader.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <None Include="Shaders\Common.hlsli">
@@ -84,10 +90,13 @@
     <FxCompile Include="Shaders\GeometryPassPS.hlsl">
       <Filter>Shaders</Filter>
     </FxCompile>
-    <FxCompile Include="Shaders\PostProjectionPassthroughVS.hlsl">
+    <FxCompile Include="Shaders\DbgRenderDepthPS.hlsl">
       <Filter>Shaders</Filter>
     </FxCompile>
-    <FxCompile Include="Shaders\DbgRenderDepthPS.hlsl">
+    <FxCompile Include="Shaders\DirectionalLightsPS.hlsl">
+      <Filter>Shaders</Filter>
+    </FxCompile>
+    <FxCompile Include="Shaders\ClipSpacePassthroughVS.hlsl">
       <Filter>Shaders</Filter>
     </FxCompile>
   </ItemGroup>

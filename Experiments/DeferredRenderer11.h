@@ -22,7 +22,7 @@ class DeferredRenderer11
     enum class PassType
     {
         Geometry = 0,               // Render Geometry into GBuffer
-        DirectLighting,             // Render direct light full screen passes
+        DirectionalLighting,        // Render directional light full screen passes
         PointLighting,              // Render point light spheres
         DebugDisplayDepth,          // Dbg rendering of depth buffer
         Count,
@@ -32,7 +32,9 @@ public:
     static std::unique_ptr<DeferredRenderer11> Create(HWND window);
     ~DeferredRenderer11();
 
-    bool AddObjects(const std::wstring& contentRoot, const std::wstring& modelFilename);
+    const ComPtr<ID3D11Device>& GetDevice() const { return Device; }
+
+    void AddObject(const std::shared_ptr<Object>& object) { Objects.push_back(object); }
 
     bool Render(FXMMATRIX view, FXMMATRIX projection, bool vsync);
 
@@ -66,6 +68,7 @@ private:
     ComPtr<ID3D11Texture2D>         DepthStencilBuffer;
     ComPtr<ID3D11ShaderResourceView> DepthStencilSRV;
     ComPtr<ID3D11DepthStencilView>  DepthStencilView;
+    D3D11_VIEWPORT                  Viewport;
 
     // State objects
     ComPtr<ID3D11RasterizerState>   RasterizerState;
@@ -82,6 +85,7 @@ private:
     ComPtr<ID3D11InputLayout>       InputLayout[(uint32_t)PassType::Count];
     ComPtr<ID3D11VertexShader>      VertexShader[(uint32_t)PassType::Count];
     ComPtr<ID3D11PixelShader>       PixelShader[(uint32_t)PassType::Count];
+    ComPtr<ID3D11BlendState>        BlendStates[(uint32_t)PassType::Count];
 
     // These don't hold references to the objects. These are just pointers to existing objects above
     ID3D11ShaderResourceView*       PSShaderResources[(uint32_t)PassType::Count][8];
@@ -90,7 +94,6 @@ private:
     uint32_t                        NumShaderResources[(uint32_t)PassType::Count];
     uint32_t                        NumRenderTargets[(uint32_t)PassType::Count];
 
-    std::vector<std::shared_ptr<GeometryPool>>  GeometryPools;
     std::vector<std::shared_ptr<Object>> Objects;
 
     // Fullscreen quad (Post-projection vertices)
@@ -108,6 +111,23 @@ private:
     };
     ComPtr<ID3D11Buffer>            GeometryCB;
 
-    // TODO: Improve our janky content loading mechanism
-    std::map<std::wstring, ComPtr<ID3D11ShaderResourceView>> CachedTextureMap;
+    static const uint32_t MAX_DLIGHTS_PER_PASS = 4;
+    struct DLight
+    {
+        // NOTE: Light Dir is transformed into camera space already!
+        XMFLOAT3 Dir;
+        float Pad0;
+        XMFLOAT3 Color;
+        float Pad1;
+    };
+
+    struct DLightPSConstants
+    {
+        DLight Lights[MAX_DLIGHTS_PER_PASS];
+        uint32_t NumLights;
+        float pad0;
+        XMFLOAT2 InvViewportSize;
+        XMFLOAT4X4 InvProjection;
+    };
+    ComPtr<ID3D11Buffer>            DLightCB;
 };

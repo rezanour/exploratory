@@ -3,6 +3,7 @@
 #include "Renderer.h"
 #include "TestRenderer.h"
 #include "DeferredRenderer11.h"
+#include "ContentLoader.h"
 
 // Constants
 static const wchar_t ClassName[] = L"Experiments Test Application";
@@ -45,13 +46,18 @@ int WINAPI WinMain(HINSTANCE instance, HINSTANCE, LPSTR, int)
         return -4;
     }
 
-    if (!renderer->AddObjects(L"../ProcessedContent/", L"crytek-sponza/sponza.model"))
+    std::shared_ptr<ContentLoader> contentLoader = std::make_shared<ContentLoader>(renderer->GetDevice(), L"../ProcessedContent/");
+
     //if (!renderer->AddMeshes(L"../ProcessedContent/", L"crytek-sponza/sponza.model"))
     //if (!renderer->AddMeshes(L"../ProcessedContent/", L"sibenik/sibenik.model"))
+    std::shared_ptr<Object> level;
+    if (!contentLoader->LoadObject(L"crytek-sponza/sponza.model", &level))
     {
         assert(false);
         return -5;
     }
+
+    renderer->AddObject(level);
 
     ShowWindow(Window, SW_SHOW);
     UpdateWindow(Window);
@@ -61,8 +67,6 @@ int WINAPI WinMain(HINSTANCE instance, HINSTANCE, LPSTR, int)
     LARGE_INTEGER currTime {};
     LARGE_INTEGER frequency {};
     QueryPerformanceFrequency(&frequency);
-
-    // Clear Color
 
     // TODO: Replace with something better as needed
 

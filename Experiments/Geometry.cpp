@@ -5,7 +5,7 @@
 const uint32_t VertexStride[(uint32_t)VertexType::Count] =
 {
     sizeof(StandardVertex),
-    sizeof(PostProjectionVertex),
+    sizeof(ClipSpace2DVertex),
 };
 
 const D3D11_INPUT_ELEMENT_DESC VertexElements[(uint32_t)VertexType::Count][16] = 
@@ -17,7 +17,7 @@ const D3D11_INPUT_ELEMENT_DESC VertexElements[(uint32_t)VertexType::Count][16] =
         { "BITANGENT", 0,   DXGI_FORMAT_R32G32B32_FLOAT,    0, sizeof(XMFLOAT3) * 3,    D3D11_INPUT_PER_VERTEX_DATA, 0 },
         { "TEXCOORD", 0,    DXGI_FORMAT_R32G32_FLOAT,       0, sizeof(XMFLOAT3) * 4,    D3D11_INPUT_PER_VERTEX_DATA, 0 },
     },
-    { // PostProjectionVertex
+    { // ClipSpace2DVertex
         { "POSITION", 0,    DXGI_FORMAT_R32G32_FLOAT,       0, 0,                   D3D11_INPUT_PER_VERTEX_DATA, 0 },
         { "TEXCOORD", 0,    DXGI_FORMAT_R32G32_FLOAT,       0, sizeof(XMFLOAT2),    D3D11_INPUT_PER_VERTEX_DATA, 0 },
     },
@@ -26,7 +26,7 @@ const D3D11_INPUT_ELEMENT_DESC VertexElements[(uint32_t)VertexType::Count][16] =
 const uint32_t VertexElementCount[(uint32_t)VertexType::Count] =
 {
     5,  // StandardVertex
-    2,  // PostProjectionVertex
+    2,  // ClipSpace2DVertex
 };
 
 

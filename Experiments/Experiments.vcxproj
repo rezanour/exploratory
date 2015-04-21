@@ -98,6 +98,7 @@
     </FxCompile>
   </ItemDefinitionGroup>
   <ItemGroup>
+    <ClInclude Include="ContentLoader.h" />
     <ClInclude Include="Debug.h" />
     <ClInclude Include="DeferredRenderer11.h" />
     <ClInclude Include="Geometry.h" />
@@ -108,6 +109,7 @@
     <ClInclude Include="TestRenderer.h" />
   </ItemGroup>
   <ItemGroup>
+    <ClCompile Include="ContentLoader.cpp" />
     <ClCompile Include="Debug.cpp" />
     <ClCompile Include="DeferredRenderer11.cpp" />
     <ClCompile Include="Geometry.cpp" />
@@ -127,6 +129,10 @@
       <ShaderType Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">Pixel</ShaderType>
       <ShaderType Condition="'$(Configuration)|$(Platform)'=='Release|x64'">Pixel</ShaderType>
     </FxCompile>
+    <FxCompile Include="Shaders\DirectionalLightsPS.hlsl">
+      <ShaderType Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">Pixel</ShaderType>
+      <ShaderType Condition="'$(Configuration)|$(Platform)'=='Release|x64'">Pixel</ShaderType>
+    </FxCompile>
     <FxCompile Include="Shaders\GeometryPassPS.hlsl">
       <ShaderType Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">Pixel</ShaderType>
       <ShaderType Condition="'$(Configuration)|$(Platform)'=='Release|x64'">Pixel</ShaderType>
@@ -137,7 +143,7 @@
       <HeaderFileOutput Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">%(RelativeDir)%(Filename).h</HeaderFileOutput>
       <HeaderFileOutput Condition="'$(Configuration)|$(Platform)'=='Release|x64'">%(RelativeDir)%(Filename).h</HeaderFileOutput>
     </FxCompile>
-    <FxCompile Include="Shaders\PostProjectionPassthroughVS.hlsl">
+    <FxCompile Include="Shaders\ClipSpacePassthroughVS.hlsl">
       <ShaderType Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">Vertex</ShaderType>
       <ShaderType Condition="'$(Configuration)|$(Platform)'=='Release|x64'">Vertex</ShaderType>
     </FxCompile>

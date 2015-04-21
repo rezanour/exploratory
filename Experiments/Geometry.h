@@ -4,7 +4,7 @@
 enum class VertexType
 {
     Standard = 0,       // Standard 3D vertex with tangent space info
-    PostProjection,     // Used by fullscreen effects or quad rendering
+    ClipSpace2D,        // Used by fullscreen effects or quad rendering
     Count
 };
 
@@ -25,8 +25,8 @@ struct StandardVertex
     XMFLOAT2 TexCoord;
 };
 
-// normalized post-projection space. For D3D, that's x and y in [-1, 1], with -y being down
-struct PostProjectionVertex
+// normalized clip space. For D3D, that's x and y in [-1, 1], with -y being down
+struct ClipSpace2DVertex
 {
     XMFLOAT2 Position;
     XMFLOAT2 TexCoord;
