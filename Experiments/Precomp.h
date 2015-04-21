@@ -13,12 +13,14 @@
 #include <string>
 #include <map>
 
-#include <d3d11_2.h>
-#include <dxgi1_3.h>
+//#define ENABLE_DX12_SUPPORT
 
 #if defined (ENABLE_DX12_SUPPORT)
 #include <d3d12.h>
 #include <dxgi1_4.h>
+#else
+#include <d3d11_2.h>
+#include <dxgi1_3.h>
 #endif
 
 // DDS library
