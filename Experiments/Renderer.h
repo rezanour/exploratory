@@ -40,8 +40,8 @@ private:
     {
         uint32_t StartIndex;
         uint32_t NumIndices;
-        void* AlbedoSRV;
-        void* BumpDerivativeSRV;
+        ComPtr<ID3D12Resource> AlbedoTex;
+        ComPtr<ID3D12Resource> BumpDerivativeTex;
     };
 
     struct Object
@@ -92,8 +92,11 @@ private:
     };
 
     bool Present(bool vsync);
-    bool LoadTexture(const std::wstring& filename, void** srv);
-    void SetResourceBarrier(ID3D12GraphicsCommandList* commandList, ID3D12Resource* resource, UINT stateBefore, UINT stateAfter);
+    bool CreateUploadBuffer(const void* pData, size_t size, ID3D12Resource** ppBuf);
+    bool CreateBuffer(const void* pData, size_t size, ID3D12Resource** ppTempBuf, ID3D12Resource** ppFinalBuf);
+    bool CreateTexture2D(const void* pData, size_t size, DXGI_FORMAT format, UINT width, UINT height, UINT16 arraySize, UINT16 mipLevels, ID3D12Resource** ppTempTex, ID3D12Resource** ppFinalTex);
+    bool LoadTexture(const std::wstring& filename, ID3D12Resource** ppTempTex, ID3D12Resource** ppFinalTex);
+    void SetResourceBarrier(ID3D12GraphicsCommandList* commandList, ID3D12Resource* resource, D3D12_RESOURCE_STATES stateBefore, D3D12_RESOURCE_STATES stateAfter);
 
     HWND Window;
     ComPtr<IDXGISwapChain> SwapChain;
@@ -102,7 +105,7 @@ private:
     ComPtr<ID3D12CommandQueue> DefaultQueue;
     ComPtr<ID3D12GraphicsCommandList> CmdLists[2];
     ComPtr<ID3D12PipelineState> PipelineStates[1];
-    ComPtr<ID3D12DescriptorHeap> DefaultDescHeap;
+    ComPtr<ID3D12DescriptorHeap> ShaderResourceHeap;
     ComPtr<ID3D12DescriptorHeap> DepthStencilDescHeap;
     ComPtr<ID3D12DescriptorHeap> RenderTargetDescHeap;
     ComPtr<ID3D12Fence> RenderFence;
@@ -113,6 +116,7 @@ private:
     HANDLE RenderedEvent;
     UINT BackBufferIdx;
     UINT64 RenderFenceIdx;
+    std::unordered_map<std::wstring, ID3D12Resource*> loadedTextureMaps;
 
     std::shared_ptr<Scene> TheScene;
     LightConstants LightData;

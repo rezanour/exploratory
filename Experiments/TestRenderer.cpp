@@ -540,8 +540,8 @@ bool TestRenderer::LoadTexture(const std::wstring& filename, ID3D11ShaderResourc
             init[m].SysMemPitch = width * bpp;
             init[m].SysMemSlicePitch = width * height * bpp;
 
-            width >>= 1;
-            height >>= 1;
+            width = max(width >> 1, 1);
+            height = max(height >> 1, 1);
             pPixels += init[m].SysMemSlicePitch;
         }
 

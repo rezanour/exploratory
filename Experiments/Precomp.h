@@ -1,5 +1,6 @@
 #pragma once
 
+#define WIN32_LEAN_AND_MEAN
 #include <Windows.h>
 
 #include <stdint.h>
@@ -12,11 +13,14 @@
 #include <vector>
 #include <string>
 #include <map>
+#include <unordered_map>
+#include <algorithm>
 
-//#define ENABLE_DX12_SUPPORT
+#define ENABLE_DX12_SUPPORT
 
 #if defined (ENABLE_DX12_SUPPORT)
 #include <d3d12.h>
+#include <d3dx12.h>
 #include <dxgi1_4.h>
 #else
 #include <d3d11_2.h>
@@ -43,3 +47,8 @@ using namespace Microsoft::WRL::Wrappers;
 
 #define CheckResult(x) { HRESULT _hr = (x); if (FAILED(_hr)) { LogError(L#x L" failed with hr = 0x%08x.", _hr); return false; }}
 
+struct ComPtrHasher
+{
+    template <typename T>
+    size_t operator()(const ComPtr<T>& ptr) const { std::hash<T*> hasher; return hasher(ptr.Get()); }
+};
