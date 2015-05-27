@@ -2,8 +2,7 @@
 #include "Renderer.h"
 #include "Debug.h"
 #include "Shaders/SimpleTransformVS.h"
-//#include "Shaders/SimpleTexturePS.h"
-#include "Shaders/SimplePS.h"
+#include "Shaders/SimpleTexturePS.h"
 
 #if defined (ENABLE_DX12_SUPPORT)
 #pragma comment(lib, "d3d12.lib")
@@ -27,8 +26,11 @@ std::unique_ptr<Renderer> Renderer::Create(HWND window)
     return nullptr;
 }
 
-Renderer::Renderer(HWND window)
-    : Window(window)
+Renderer::Renderer(HWND window) :
+    Window(window),
+    RenderedEvent(nullptr),
+    BackBufferIdx(0),
+    RenderFenceIdx(1)
 {
 }
 
@@ -38,31 +40,11 @@ Renderer::~Renderer()
 
 bool Renderer::Initialize()
 {
-#if 0
-    D3D12_CREATE_DEVICE_FLAG d3dFlag = D3D12_CREATE_DEVICE_NONE;
-#if defined(_DEBUG)
-    d3dFlag |= D3D12_CREATE_DEVICE_DEBUG;
-#endif
-#endif
-
     HRESULT hr = D3D12CreateDevice(nullptr, D3D_FEATURE_LEVEL_11_0, IID_PPV_ARGS(Device.GetAddressOf()));
     if (FAILED(hr))
     {
-#if 0
-        // Did it fail because we're requesting the debug layer and it's not present
-        // on this machine (and, for D3D12 preview, in the directory of the exe)?
-        if (d3dFlag == D3D12_CREATE_DEVICE_DEBUG && hr == DXGI_ERROR_SDK_COMPONENT_MISSING)
-        {
-            // Try again without debug layer
-            d3dFlag &= ~D3D12_CREATE_DEVICE_DEBUG;
-            hr = D3D12CreateDevice(nullptr, D3D_FEATURE_LEVEL_11_0, IID_PPV_ARGS(Device.GetAddressOf()));
-        }
-#endif
-        if (FAILED(hr))
-        {
-            LogError(L"Failed to create D3D12 device.");
-            return false;
-        }
+        LogError(L"Failed to create D3D12 device.");
+        return false;
     }
 
     D3D12_COMMAND_QUEUE_DESC queueDesc;
@@ -106,7 +88,15 @@ bool Renderer::Initialize()
     heapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
     heapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
     heapDesc.NumDescriptors = 100;
-    CHK(Device->CreateDescriptorHeap(&heapDesc, IID_PPV_ARGS(ShaderResourceHeap.GetAddressOf())));
+    CHK(Device->CreateDescriptorHeap(&heapDesc, IID_PPV_ARGS(ShaderResourceDescHeap.GetAddressOf())));
+    ShaderResourceDescHandle = ShaderResourceDescHeap->GetCPUDescriptorHandleForHeapStart();
+    DescIncrementSize = Device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
+
+    memset(&heapDesc, 0, sizeof(heapDesc));
+    heapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_SAMPLER;
+    heapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
+    heapDesc.NumDescriptors = 1;
+    CHK(Device->CreateDescriptorHeap(&heapDesc, IID_PPV_ARGS(SamplerDescHeap.GetAddressOf())));
 
     for (int32_t i = 0; i < 2; ++i)
     {
@@ -133,24 +123,51 @@ bool Renderer::Initialize()
     CHK(Device->CreateFence(0, D3D12_FENCE_FLAG_NONE, IID_PPV_ARGS(RenderFence.GetAddressOf())));
 
     RenderedEvent = CreateEventEx(nullptr, nullptr, 0, EVENT_ALL_ACCESS);
-
-    CD3DX12_ROOT_PARAMETER rootParams[1];
+#if 0
+    CD3DX12_ROOT_PARAMETER rootParams[2];
 //    rootParams[0].InitAsConstants(16, 0);
     rootParams[0].InitAsConstantBufferView(0);
 
-    D3D12_STATIC_SAMPLER_DESC samplerDescriptions[1];
-    memset(&samplerDescriptions, 0, sizeof(samplerDescriptions));
-    samplerDescriptions[0].Filter = D3D12_FILTER_MIN_MAG_MIP_LINEAR;
-    samplerDescriptions[0].AddressU = D3D12_TEXTURE_ADDRESS_MODE_WRAP;
-    samplerDescriptions[0].AddressV = D3D12_TEXTURE_ADDRESS_MODE_WRAP;
-    samplerDescriptions[0].AddressW = D3D12_TEXTURE_ADDRESS_MODE_WRAP;
-    samplerDescriptions[0].MaxLOD = 1000.0f;
+    CD3DX12_DESCRIPTOR_RANGE descRanges[1];
+    descRanges[0].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 0);
+    rootParams[1].InitAsDescriptorTable(_countof(descRanges), descRanges);
+
+    CD3DX12_STATIC_SAMPLER_DESC samplerDescriptions[1];
+    samplerDescriptions[0].Init(0);
 
     ComPtr<ID3DBlob> pOutBlob, pErrorBlob;
     CD3DX12_ROOT_SIGNATURE_DESC rootSignature;
     rootSignature.Init(_countof(rootParams), rootParams, _countof(samplerDescriptions), samplerDescriptions, D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT);
     CHK(D3D12SerializeRootSignature(&rootSignature, D3D_ROOT_SIGNATURE_VERSION_1, &pOutBlob, &pErrorBlob));
     CHK(Device->CreateRootSignature(0, pOutBlob->GetBufferPointer(), pOutBlob->GetBufferSize(), IID_PPV_ARGS(RootSignature.GetAddressOf())));
+#else
+    D3D12_SAMPLER_DESC samplerDesc;
+    memset(&samplerDesc, 0, sizeof(samplerDesc));
+    samplerDesc.Filter = D3D12_FILTER_ANISOTROPIC;
+    samplerDesc.AddressU = D3D12_TEXTURE_ADDRESS_MODE_WRAP;
+    samplerDesc.AddressV = D3D12_TEXTURE_ADDRESS_MODE_WRAP;
+    samplerDesc.AddressW = D3D12_TEXTURE_ADDRESS_MODE_WRAP;
+    samplerDesc.MaxAnisotropy = 16;
+    samplerDesc.MaxLOD = D3D12_FLOAT32_MAX;
+    Device->CreateSampler(&samplerDesc, SamplerDescHeap->GetCPUDescriptorHandleForHeapStart());
+
+    CD3DX12_ROOT_PARAMETER rootParams[4];
+    rootParams[0].InitAsConstantBufferView(0, 0, D3D12_SHADER_VISIBILITY_VERTEX);
+//    rootParams[3].InitAsConstantBufferView(0, 0, D3D12_SHADER_VISIBILITY_PIXEL);
+
+    CD3DX12_DESCRIPTOR_RANGE descRanges[3];
+    descRanges[0].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SAMPLER, 1, 0);
+    descRanges[1].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 3, 0);
+    descRanges[2].Init(D3D12_DESCRIPTOR_RANGE_TYPE_CBV, 1, 0);
+    rootParams[1].InitAsDescriptorTable(1, descRanges);
+    rootParams[2].InitAsDescriptorTable(1, descRanges + 1);
+    rootParams[3].InitAsDescriptorTable(1, descRanges + 2, D3D12_SHADER_VISIBILITY_PIXEL);
+    ComPtr<ID3DBlob> pOutBlob, pErrorBlob;
+    CD3DX12_ROOT_SIGNATURE_DESC rootSignature;
+    rootSignature.Init(_countof(rootParams), rootParams, 0, nullptr, D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT);
+    CHK(D3D12SerializeRootSignature(&rootSignature, D3D_ROOT_SIGNATURE_VERSION_1, &pOutBlob, &pErrorBlob));
+    CHK(Device->CreateRootSignature(0, pOutBlob->GetBufferPointer(), pOutBlob->GetBufferSize(), IID_PPV_ARGS(RootSignature.GetAddressOf())));
+#endif
 
     D3D12_INPUT_ELEMENT_DESC inputElemDesc[] =
     {
@@ -180,6 +197,7 @@ bool Renderer::Initialize()
 
     CD3DX12_RASTERIZER_DESC rasterizerDesc(
         D3D12_FILL_MODE_SOLID,
+//        D3D12_FILL_MODE_WIREFRAME,
         D3D12_CULL_MODE_BACK,
         TRUE,
         D3D12_DEFAULT_DEPTH_BIAS,
@@ -197,8 +215,8 @@ bool Renderer::Initialize()
     pipelineDesc.pRootSignature = RootSignature.Get();
     pipelineDesc.VS.pShaderBytecode = SimpleTransformVS;
     pipelineDesc.VS.BytecodeLength = sizeof(SimpleTransformVS);
-    pipelineDesc.PS.pShaderBytecode = SimplePS;
-    pipelineDesc.PS.BytecodeLength = sizeof(SimplePS);
+    pipelineDesc.PS.pShaderBytecode = SimpleTexturePS;//SimplePS;
+    pipelineDesc.PS.BytecodeLength = sizeof(SimpleTexturePS);//sizeof(SimplePS);
     pipelineDesc.BlendState = CD3DX12_BLEND_DESC(D3D12_DEFAULT);
     pipelineDesc.SampleMask = UINT_MAX;
     pipelineDesc.DepthStencilState = depthStencilDesc;
@@ -212,10 +230,21 @@ bool Renderer::Initialize()
     pipelineDesc.SampleDesc.Count = 1;
     CHK(Device->CreateGraphicsPipelineState(&pipelineDesc, IID_PPV_ARGS(PipelineStates[0].GetAddressOf())));
 
+    for (size_t iBuf = 0; iBuf < _countof(GlobalConstantBuffers); ++iBuf)
+    {
+        size_t bufSize = sizeof(LightConstants);
+        bufSize = (bufSize + D3D12_CONSTANT_BUFFER_DATA_PLACEMENT_ALIGNMENT-1) / D3D12_CONSTANT_BUFFER_DATA_PLACEMENT_ALIGNMENT * D3D12_CONSTANT_BUFFER_DATA_PLACEMENT_ALIGNMENT;
+        CreateUploadBuffer(nullptr, bufSize, &GlobalConstantBuffers[iBuf]);
+        D3D12_CONSTANT_BUFFER_VIEW_DESC cbDesc = {GlobalConstantBuffers[iBuf]->GetGPUVirtualAddress(), (UINT)bufSize};
+        Device->CreateConstantBufferView(&cbDesc, ShaderResourceDescHandle);
+        GlobalConstantDescOffsets[iBuf] = (UINT)(ShaderResourceDescHandle.ptr - ShaderResourceDescHeap->GetCPUDescriptorHandleForHeapStart().ptr) / DescIncrementSize;
+        ShaderResourceDescHandle.ptr += DescIncrementSize;
+    }
+
     return true;
 }
 
-bool Renderer::Render(FXMVECTOR /*cameraPosition*/, FXMMATRIX view, FXMMATRIX projection, bool vsync)
+bool Renderer::Render(FXMVECTOR cameraPosition, FXMMATRIX view, FXMMATRIX projection, bool vsync)
 {
     int32_t cmdIdx = RenderFenceIdx & 0x01;
 
@@ -226,10 +255,42 @@ bool Renderer::Render(FXMVECTOR /*cameraPosition*/, FXMMATRIX view, FXMMATRIX pr
     CHK(pCmdList->Reset(CmdAllocators[cmdIdx].Get(), nullptr));
 
     pCmdList->SetGraphicsRootSignature(RootSignature.Get());
+    ID3D12DescriptorHeap* descHeaps[] = {SamplerDescHeap.Get(), ShaderResourceDescHeap.Get()};
+    pCmdList->SetDescriptorHeaps(_countof(descHeaps), descHeaps);
+
+    pCmdList->SetGraphicsRootDescriptorTable(1, SamplerDescHeap->GetGPUDescriptorHandleForHeapStart());
+
+    LightConstants* pLightData;
+    GlobalConstantBuffers[cmdIdx]->Map(0, nullptr, reinterpret_cast<void**>(&pLightData));
+    XMStoreFloat3(&pLightData->EyePosition, cameraPosition);
+    pLightData->NumLights = 0;
+    pLightData->Lights[0].Direction = XMFLOAT3(1.f, 1.f, 1.f);
+    pLightData->Lights[0].Color = XMFLOAT3(0.6f, 0.6f, 0.6f);
+    pLightData->Lights[1].Direction = XMFLOAT3(-1.f, 1.f, -1.f);
+    pLightData->Lights[1].Color = XMFLOAT3(0.5f, 0.5f, 0.5f);
+
+    pLightData->NumPointLights = 3;
+    pLightData->PointLights[0].Position = XMFLOAT3(0.f, 300.f, 0.f);
+    pLightData->PointLights[0].Color = XMFLOAT3(0.6f, 0.6f, 0.6f);
+    pLightData->PointLights[0].Radius = 500.f;
+    pLightData->PointLights[1].Position = XMFLOAT3(-800.f, 300.f, 0.f);
+    pLightData->PointLights[1].Color = XMFLOAT3(0.6f, 0.6f, 0.9f);
+    pLightData->PointLights[1].Radius = 500.f;
+    pLightData->PointLights[2].Position = XMFLOAT3(800.f, 300.f, 0.f);
+    pLightData->PointLights[2].Color = XMFLOAT3(0.9f, 0.6f, 0.6f);
+    pLightData->PointLights[2].Radius = 500.f;
+    GlobalConstantBuffers[cmdIdx]->Unmap(0, nullptr);
+
+#if 1
+    CD3DX12_GPU_DESCRIPTOR_HANDLE globalConstantsHandle(ShaderResourceDescHeap->GetGPUDescriptorHandleForHeapStart(), GlobalConstantDescOffsets[cmdIdx], DescIncrementSize);
+    pCmdList->SetGraphicsRootDescriptorTable(3, globalConstantsHandle);
+#else
+    pCmdList->SetGraphicsRootConstantBufferView(3, GlobalConstantBuffers[cmdIdx]->GetGPUVirtualAddress());
+#endif
 
     SetResourceBarrier(pCmdList, BackBuffer.Get(), D3D12_RESOURCE_STATE_PRESENT, D3D12_RESOURCE_STATE_RENDER_TARGET);
 
-    float clearClr[] = {0.5f, 0.5f, 0.5f, 1.0f};
+    float clearClr[] = {0.0f, 0.0f, 0.0f, 1.0f};
     auto rtDescHandle = RenderTargetDescHeap->GetCPUDescriptorHandleForHeapStart();
     pCmdList->ClearRenderTargetView(rtDescHandle, clearClr, 0, nullptr);
     auto dsvDescHandle = DepthStencilDescHeap->GetCPUDescriptorHandleForHeapStart();
@@ -270,6 +331,8 @@ bool Renderer::Render(FXMVECTOR /*cameraPosition*/, FXMMATRIX view, FXMMATRIX pr
 
         for (auto& mesh : object->Meshes)
         {
+            CD3DX12_GPU_DESCRIPTOR_HANDLE albedoHandle(ShaderResourceDescHeap->GetGPUDescriptorHandleForHeapStart(), mesh.AlbedoDescIdx, DescIncrementSize);
+            pCmdList->SetGraphicsRootDescriptorTable(2, albedoHandle);
             pCmdList->DrawIndexedInstanced(mesh.NumIndices, 1, mesh.StartIndex, 0, 0);
         }
     }
@@ -285,10 +348,9 @@ bool Renderer::Render(FXMVECTOR /*cameraPosition*/, FXMMATRIX view, FXMMATRIX pr
     return Present(vsync);
 }
 
-bool Renderer::Present(bool /*vsync*/)
+bool Renderer::Present(bool vsync)
 {
-//    CHK(SwapChain->Present(vsync ? 1 : 0, 0));
-    CHK(SwapChain->Present(0, 0));
+    CHK(SwapChain->Present(vsync ? 1 : 0, 0));
 
     BackBufferIdx = (BackBufferIdx + 1) % kNumBackBuffers;
     CHK(SwapChain->GetBuffer(BackBufferIdx, IID_PPV_ARGS(BackBuffer.ReleaseAndGetAddressOf())));
@@ -363,7 +425,7 @@ bool Renderer::CreateBuffer(const void* pData, size_t size, ID3D12Resource** ppT
 
     return true;
 }
-
+#if 0
 bool Renderer::CreateTexture2D(const void* pData, size_t size, DXGI_FORMAT format, UINT width, UINT height, UINT16 arraySize, UINT16 mipLevels, ID3D12Resource** ppTempTex, ID3D12Resource** ppFinalTex)
 {
     ComPtr<ID3D12Resource> pUploadTex;
@@ -382,7 +444,8 @@ bool Renderer::CreateTexture2D(const void* pData, size_t size, DXGI_FORMAT forma
 
     if (pData != nullptr)
     {
-        UINT bytesPerPixel = (UINT)BitsPerPixel(format) / 8;
+#if 1
+		UINT bytesPerPixel = (UINT)BitsPerPixel(format) / 8;
 
         UINT levelWidth = width;
         UINT levelHeight = height;
@@ -401,8 +464,11 @@ bool Renderer::CreateTexture2D(const void* pData, size_t size, DXGI_FORMAT forma
         }
 
         assert(size_t(pPixels - reinterpret_cast<const char*>(pData)) <= size);
+#else
+        (void)size;
+#endif
     }
-
+#if 1
     CD3DX12_HEAP_PROPERTIES defaultHeapProps(D3D12_HEAP_TYPE_DEFAULT);
 	CHK(Device->CreateCommittedResource(
 		&defaultHeapProps,
@@ -413,10 +479,70 @@ bool Renderer::CreateTexture2D(const void* pData, size_t size, DXGI_FORMAT forma
 		IID_PPV_ARGS(ppFinalTex)));
 
     *ppTempTex = pUploadTex.Detach();
+#else
+    *ppTempTex = nullptr;
+    *ppFinalTex = pUploadTex.Detach();
+#endif
 
     return true;
 }
+#else
 
+bool Renderer::CreateTexture2D(const void* pData, size_t size, DXGI_FORMAT format, UINT width, UINT height, UINT16 arraySize, UINT16 mipLevels, ID3D12Resource** ppTempTex, ID3D12Resource** ppFinalTex)
+{
+    CD3DX12_RESOURCE_DESC texDesc = CD3DX12_RESOURCE_DESC::Tex2D(format, width, height, arraySize, mipLevels);
+
+    UINT64 requiredSize;
+    UINT numSubresources = texDesc.DepthOrArraySize * texDesc.MipLevels;
+    std::vector<D3D12_PLACED_SUBRESOURCE_FOOTPRINT> layouts(numSubresources);
+    std::vector<UINT64> rowSizes(numSubresources);
+    Device->GetCopyableFootprints(&texDesc, 0, numSubresources, 0, &layouts[0], nullptr, &rowSizes[0], &requiredSize);
+
+    ComPtr<ID3D12Resource> pUploadTex;
+    CD3DX12_HEAP_PROPERTIES uploadHeapProps(D3D12_HEAP_TYPE_UPLOAD);
+    CD3DX12_RESOURCE_DESC bufDesc = CD3DX12_RESOURCE_DESC::Buffer(requiredSize);
+    CHK(Device->CreateCommittedResource(
+        &uploadHeapProps,
+        D3D12_HEAP_FLAG_NONE,
+        &bufDesc,
+        D3D12_RESOURCE_STATE_GENERIC_READ,
+        nullptr,    // Clear value
+        IID_PPV_ARGS(pUploadTex.GetAddressOf())));
+
+    if (pData != nullptr)
+    {
+        UINT8* pDestStart;
+        const UINT8* pSrc = reinterpret_cast<const UINT8*>(pData);
+        CHK(pUploadTex->Map(0, nullptr, reinterpret_cast<void**>(&pDestStart)));
+        for (UINT iSubresource = 0; iSubresource < numSubresources; ++iSubresource)
+        {
+            auto pDest = pDestStart + layouts[iSubresource].Offset;
+            for (UINT y = 0; y < layouts[iSubresource].Footprint.Height; ++y)
+            {
+                memcpy(pDest, pSrc, rowSizes[iSubresource]);
+                pDest += layouts[iSubresource].Footprint.RowPitch;
+                pSrc += rowSizes[iSubresource];
+            }
+        }
+        pUploadTex->Unmap(0, nullptr); // TODO: Do we need to pass in the written range???
+
+        assert(pSrc - reinterpret_cast<const UINT8*>(pData) == (ptrdiff_t)size);
+    }
+
+    CD3DX12_HEAP_PROPERTIES defaultHeapProps(D3D12_HEAP_TYPE_DEFAULT);
+    CHK(Device->CreateCommittedResource(
+        &defaultHeapProps,
+        D3D12_HEAP_FLAG_NONE,
+        &texDesc,
+        D3D12_RESOURCE_STATE_COPY_DEST,
+        nullptr,    // Clear value
+        IID_PPV_ARGS(ppFinalTex)));
+
+    *ppTempTex = pUploadTex.Detach();
+
+    return true;
+}
+#endif
 bool Renderer::AddMeshes(const std::wstring& contentRoot, const std::wstring& modelFilename)
 {
     ComResourceMap resourceMap;
@@ -487,6 +613,13 @@ bool Renderer::AddMeshes(const std::wstring& contentRoot, const std::wstring& mo
     // Free up memory
     indices.reset();
 
+    D3D12_SHADER_RESOURCE_VIEW_DESC emptyTexDesc;
+    memset(&emptyTexDesc, 0, sizeof(emptyTexDesc));
+    emptyTexDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
+    emptyTexDesc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
+    emptyTexDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
+    emptyTexDesc.Texture2D.MipLevels = 1;
+
     // Load objects
     for (int iObj = 0; iObj < (int)header.NumObjects; ++iObj)
     {
@@ -521,7 +654,7 @@ bool Renderer::AddMeshes(const std::wstring& contentRoot, const std::wstring& mo
 
             if (part.DiffuseTexture[0] != 0)
             {
-                if (!LoadTexture(contentRoot + part.DiffuseTexture, tempResource.ReleaseAndGetAddressOf(), mesh.AlbedoTex.GetAddressOf()))
+                if (!LoadTexture(contentRoot + part.DiffuseTexture, tempResource.ReleaseAndGetAddressOf(), mesh.AlbedoTex.GetAddressOf(), &mesh.AlbedoDescIdx))
                 {
                     LogError(L"Failed to load texture.");
                     return false;
@@ -532,13 +665,46 @@ bool Renderer::AddMeshes(const std::wstring& contentRoot, const std::wstring& mo
 
             if (part.NormalTexture[0] != 0)
             {
-                if (!LoadTexture(contentRoot + part.NormalTexture, tempResource.ReleaseAndGetAddressOf(), mesh.BumpDerivativeTex.GetAddressOf()))
+                if (!LoadTexture(contentRoot + part.NormalTexture, tempResource.ReleaseAndGetAddressOf(), mesh.BumpDerivativeTex.GetAddressOf(), &mesh.BumpDerivativeDescIdx))
                 {
                     LogError(L"Failed to load texture.");
                     return false;
                 }
 
                 resourceMap.emplace(tempResource, mesh.BumpDerivativeTex);
+            }
+            else
+            {
+                if (tempResource != nullptr)
+                {
+                    mesh.BumpDerivativeDescIdx = CreateShaderResourceView(nullptr, emptyTexDesc);
+                }
+                else
+                {
+                    mesh.BumpDerivativeDescIdx = mesh.AlbedoDescIdx + 1;
+                }
+            }
+
+            if (part.SpecularTexture[0] != 0)
+            {
+                if (!LoadTexture(contentRoot + part.SpecularTexture, tempResource.ReleaseAndGetAddressOf(), mesh.SpecularTex.GetAddressOf(), &mesh.SpecularDescIdx))
+                {
+                    LogError(L"Failed to load texture.");
+                    return false;
+                }
+
+                resourceMap.emplace(tempResource, mesh.SpecularTex);
+            }
+            else
+            {
+                if (tempResource != nullptr)
+                {
+                    mesh.SpecularDescIdx = CreateShaderResourceView(nullptr, emptyTexDesc);
+                }
+                else
+                {
+                    mesh.SpecularDescIdx = mesh.BumpDerivativeDescIdx + 1;
+                }
             }
 
             obj->Meshes.push_back(mesh);
@@ -556,10 +722,25 @@ bool Renderer::AddMeshes(const std::wstring& contentRoot, const std::wstring& mo
         if (pair.first == nullptr)
             continue;
 
-        pCmdList->CopyResource(pair.second.Get(), pair.first.Get());
+        auto destDesc = pair.second->GetDesc();
+        D3D12_RESOURCE_STATES newState = (destDesc.Dimension == D3D12_RESOURCE_DIMENSION_BUFFER) ? D3D12_RESOURCE_STATE_COMMON : D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
+        if (destDesc.Dimension == D3D12_RESOURCE_DIMENSION_BUFFER)
+        {
+            pCmdList->CopyResource(pair.second.Get(), pair.first.Get());
+        }
+        else
+        {
+            UINT numSubresources = destDesc.DepthOrArraySize * destDesc.MipLevels;
+            std::vector<D3D12_PLACED_SUBRESOURCE_FOOTPRINT> layouts(numSubresources);
+            Device->GetCopyableFootprints(&destDesc, 0, numSubresources, 0, &layouts[0], nullptr, nullptr, nullptr);
+            for (UINT iSubresource = 0; iSubresource < numSubresources; ++iSubresource)
+            {
+                CD3DX12_TEXTURE_COPY_LOCATION srcLoc(pair.first.Get(), layouts[iSubresource]);
+                CD3DX12_TEXTURE_COPY_LOCATION destLoc(pair.second.Get(), iSubresource);
+                pCmdList->CopyTextureRegion(&destLoc, 0, 0, 0, &srcLoc, nullptr);
+            }
+        }
 
-        auto desc = pair.first->GetDesc();
-        D3D12_RESOURCE_STATES newState = (desc.Dimension == D3D12_RESOURCE_DIMENSION_BUFFER) ? D3D12_RESOURCE_STATE_COMMON : D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE;
         SetResourceBarrier(pCmdList, pair.second.Get(), D3D12_RESOURCE_STATE_COPY_DEST, newState);
     }
     CHK(pCmdList->Close());
@@ -580,14 +761,19 @@ bool Renderer::AddMeshes(const std::wstring& contentRoot, const std::wstring& mo
     return true;
 }
 
-bool Renderer::LoadTexture(const std::wstring& filename, ID3D12Resource** ppTempTex, ID3D12Resource** ppFinalTex)
+bool Renderer::LoadTexture(const std::wstring& filename, ID3D12Resource** ppTempTex, ID3D12Resource** ppFinalTex, UINT* pDescIdx)
 {
-    auto iter = loadedTextureMaps.find(filename);
-    if (iter != loadedTextureMaps.end())
+    assert(ppTempTex);
+    assert(ppFinalTex);
+    assert(pDescIdx);
+
+    auto iter = LoadedTextureMaps.find(filename);
+    if (iter != LoadedTextureMaps.end())
     {
         *ppTempTex = nullptr;
-        iter->second->AddRef();
-        *ppFinalTex = iter->second;
+        iter->second.first->AddRef();
+        *ppFinalTex = iter->second.first;
+        *pDescIdx = iter->second.second;
         return true;
     }
 
@@ -638,8 +824,32 @@ bool Renderer::LoadTexture(const std::wstring& filename, ID3D12Resource** ppTemp
     if (FAILED(hr))
         return false;
 
-    loadedTextureMaps.emplace(filename, *ppFinalTex);
+    D3D12_SHADER_RESOURCE_VIEW_DESC desc;
+    memset(&desc, 0, sizeof(desc));
+    desc.Format = texHeader.Format;
+    desc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
+    desc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
+    desc.Texture2D.MipLevels = UINT_MAX; // Use all mip levels
+    UINT descIdx = CreateShaderResourceView(*ppFinalTex, desc);
+    LoadedTextureMaps.emplace(filename, std::make_pair(*ppFinalTex, descIdx));
+
+    if (pDescIdx)
+    {
+        *pDescIdx = descIdx;
+    }
+
     return true;
+}
+
+UINT Renderer::CreateShaderResourceView(ID3D12Resource* pResource, const D3D12_SHADER_RESOURCE_VIEW_DESC& desc)
+{
+    Device->CreateShaderResourceView(pResource, &desc, ShaderResourceDescHandle);
+
+    auto descHeapStart = ShaderResourceDescHeap->GetCPUDescriptorHandleForHeapStart();
+    UINT descIdx = (UINT)(ShaderResourceDescHandle.ptr - descHeapStart.ptr) / DescIncrementSize;
+    ShaderResourceDescHandle.ptr += DescIncrementSize;
+
+    return descIdx;
 }
 
 #endif // DX12 support

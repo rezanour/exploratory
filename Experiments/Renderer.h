@@ -42,6 +42,10 @@ private:
         uint32_t NumIndices;
         ComPtr<ID3D12Resource> AlbedoTex;
         ComPtr<ID3D12Resource> BumpDerivativeTex;
+        ComPtr<ID3D12Resource> SpecularTex;
+        UINT AlbedoDescIdx;
+        UINT BumpDerivativeDescIdx;
+        UINT SpecularDescIdx;
     };
 
     struct Object
@@ -95,8 +99,9 @@ private:
     bool CreateUploadBuffer(const void* pData, size_t size, ID3D12Resource** ppBuf);
     bool CreateBuffer(const void* pData, size_t size, ID3D12Resource** ppTempBuf, ID3D12Resource** ppFinalBuf);
     bool CreateTexture2D(const void* pData, size_t size, DXGI_FORMAT format, UINT width, UINT height, UINT16 arraySize, UINT16 mipLevels, ID3D12Resource** ppTempTex, ID3D12Resource** ppFinalTex);
-    bool LoadTexture(const std::wstring& filename, ID3D12Resource** ppTempTex, ID3D12Resource** ppFinalTex);
+    bool LoadTexture(const std::wstring& filename, ID3D12Resource** ppTempTex, ID3D12Resource** ppFinalTex, UINT* pDescHandle);
     void SetResourceBarrier(ID3D12GraphicsCommandList* commandList, ID3D12Resource* resource, D3D12_RESOURCE_STATES stateBefore, D3D12_RESOURCE_STATES stateAfter);
+    UINT CreateShaderResourceView(ID3D12Resource* pResource, const D3D12_SHADER_RESOURCE_VIEW_DESC& desc);
 
     HWND Window;
     ComPtr<IDXGISwapChain> SwapChain;
@@ -105,9 +110,10 @@ private:
     ComPtr<ID3D12CommandQueue> DefaultQueue;
     ComPtr<ID3D12GraphicsCommandList> CmdLists[2];
     ComPtr<ID3D12PipelineState> PipelineStates[1];
-    ComPtr<ID3D12DescriptorHeap> ShaderResourceHeap;
+    ComPtr<ID3D12DescriptorHeap> ShaderResourceDescHeap;
     ComPtr<ID3D12DescriptorHeap> DepthStencilDescHeap;
     ComPtr<ID3D12DescriptorHeap> RenderTargetDescHeap;
+    ComPtr<ID3D12DescriptorHeap> SamplerDescHeap;
     ComPtr<ID3D12Fence> RenderFence;
     ComPtr<ID3D12Resource> BackBuffer;
     ComPtr<ID3D12Resource> DepthBuffer;
@@ -116,10 +122,14 @@ private:
     HANDLE RenderedEvent;
     UINT BackBufferIdx;
     UINT64 RenderFenceIdx;
-    std::unordered_map<std::wstring, ID3D12Resource*> loadedTextureMaps;
+    std::unordered_map<std::wstring, std::pair<ID3D12Resource*, UINT>> LoadedTextureMaps;
 
     std::shared_ptr<Scene> TheScene;
-    LightConstants LightData;
+    ComPtr<ID3D12Resource> GlobalConstantBuffers[2];
+    UINT GlobalConstantDescOffsets[2];
+
+    D3D12_CPU_DESCRIPTOR_HANDLE ShaderResourceDescHandle;
+    UINT DescIncrementSize;
 };
 
 #endif // DX12 support
