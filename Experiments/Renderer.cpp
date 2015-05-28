@@ -123,51 +123,35 @@ bool Renderer::Initialize()
     CHK(Device->CreateFence(0, D3D12_FENCE_FLAG_NONE, IID_PPV_ARGS(RenderFence.GetAddressOf())));
 
     RenderedEvent = CreateEventEx(nullptr, nullptr, 0, EVENT_ALL_ACCESS);
-#if 0
-    CD3DX12_ROOT_PARAMETER rootParams[2];
-//    rootParams[0].InitAsConstants(16, 0);
-    rootParams[0].InitAsConstantBufferView(0);
 
-    CD3DX12_DESCRIPTOR_RANGE descRanges[1];
-    descRanges[0].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 0);
-    rootParams[1].InitAsDescriptorTable(_countof(descRanges), descRanges);
-
+    //D3D12_SAMPLER_DESC samplerDesc;
+    //memset(&samplerDesc, 0, sizeof(samplerDesc));
+    //samplerDesc.Filter = D3D12_FILTER_ANISOTROPIC;
+    //samplerDesc.AddressU = D3D12_TEXTURE_ADDRESS_MODE_WRAP;
+    //samplerDesc.AddressV = D3D12_TEXTURE_ADDRESS_MODE_WRAP;
+    //samplerDesc.AddressW = D3D12_TEXTURE_ADDRESS_MODE_WRAP;
+    //samplerDesc.MaxAnisotropy = 16;
+    //samplerDesc.MaxLOD = D3D12_FLOAT32_MAX;
+    //Device->CreateSampler(&samplerDesc, SamplerDescHeap->GetCPUDescriptorHandleForHeapStart());
     CD3DX12_STATIC_SAMPLER_DESC samplerDescriptions[1];
     samplerDescriptions[0].Init(0);
 
+    CD3DX12_ROOT_PARAMETER rootParams[3];
+    rootParams[0].InitAsConstantBufferView(0, 0, D3D12_SHADER_VISIBILITY_VERTEX);
+//    rootParams[3].InitAsConstantBufferView(0, 0, D3D12_SHADER_VISIBILITY_PIXEL);
+
+    CD3DX12_DESCRIPTOR_RANGE descRanges[3];
+//    descRanges[0].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SAMPLER, 1, 0);
+    descRanges[1].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 3, 0);
+    descRanges[2].Init(D3D12_DESCRIPTOR_RANGE_TYPE_CBV, 1, 0);
+//    rootParams[3].InitAsDescriptorTable(1, descRanges);
+    rootParams[2].InitAsDescriptorTable(1, descRanges + 1);
+    rootParams[1].InitAsDescriptorTable(1, descRanges + 2, D3D12_SHADER_VISIBILITY_PIXEL);
     ComPtr<ID3DBlob> pOutBlob, pErrorBlob;
     CD3DX12_ROOT_SIGNATURE_DESC rootSignature;
     rootSignature.Init(_countof(rootParams), rootParams, _countof(samplerDescriptions), samplerDescriptions, D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT);
     CHK(D3D12SerializeRootSignature(&rootSignature, D3D_ROOT_SIGNATURE_VERSION_1, &pOutBlob, &pErrorBlob));
     CHK(Device->CreateRootSignature(0, pOutBlob->GetBufferPointer(), pOutBlob->GetBufferSize(), IID_PPV_ARGS(RootSignature.GetAddressOf())));
-#else
-    D3D12_SAMPLER_DESC samplerDesc;
-    memset(&samplerDesc, 0, sizeof(samplerDesc));
-    samplerDesc.Filter = D3D12_FILTER_ANISOTROPIC;
-    samplerDesc.AddressU = D3D12_TEXTURE_ADDRESS_MODE_WRAP;
-    samplerDesc.AddressV = D3D12_TEXTURE_ADDRESS_MODE_WRAP;
-    samplerDesc.AddressW = D3D12_TEXTURE_ADDRESS_MODE_WRAP;
-    samplerDesc.MaxAnisotropy = 16;
-    samplerDesc.MaxLOD = D3D12_FLOAT32_MAX;
-    Device->CreateSampler(&samplerDesc, SamplerDescHeap->GetCPUDescriptorHandleForHeapStart());
-
-    CD3DX12_ROOT_PARAMETER rootParams[4];
-    rootParams[0].InitAsConstantBufferView(0, 0, D3D12_SHADER_VISIBILITY_VERTEX);
-//    rootParams[3].InitAsConstantBufferView(0, 0, D3D12_SHADER_VISIBILITY_PIXEL);
-
-    CD3DX12_DESCRIPTOR_RANGE descRanges[3];
-    descRanges[0].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SAMPLER, 1, 0);
-    descRanges[1].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 3, 0);
-    descRanges[2].Init(D3D12_DESCRIPTOR_RANGE_TYPE_CBV, 1, 0);
-    rootParams[1].InitAsDescriptorTable(1, descRanges);
-    rootParams[2].InitAsDescriptorTable(1, descRanges + 1);
-    rootParams[3].InitAsDescriptorTable(1, descRanges + 2, D3D12_SHADER_VISIBILITY_PIXEL);
-    ComPtr<ID3DBlob> pOutBlob, pErrorBlob;
-    CD3DX12_ROOT_SIGNATURE_DESC rootSignature;
-    rootSignature.Init(_countof(rootParams), rootParams, 0, nullptr, D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT);
-    CHK(D3D12SerializeRootSignature(&rootSignature, D3D_ROOT_SIGNATURE_VERSION_1, &pOutBlob, &pErrorBlob));
-    CHK(Device->CreateRootSignature(0, pOutBlob->GetBufferPointer(), pOutBlob->GetBufferSize(), IID_PPV_ARGS(RootSignature.GetAddressOf())));
-#endif
 
     D3D12_INPUT_ELEMENT_DESC inputElemDesc[] =
     {
@@ -255,10 +239,13 @@ bool Renderer::Render(FXMVECTOR cameraPosition, FXMMATRIX view, FXMMATRIX projec
     CHK(pCmdList->Reset(CmdAllocators[cmdIdx].Get(), nullptr));
 
     pCmdList->SetGraphicsRootSignature(RootSignature.Get());
+#if 0
+    pCmdList->SetGraphicsRootDescriptorTable(3, SamplerDescHeap->GetGPUDescriptorHandleForHeapStart());
     ID3D12DescriptorHeap* descHeaps[] = {SamplerDescHeap.Get(), ShaderResourceDescHeap.Get()};
+#else
+    ID3D12DescriptorHeap* descHeaps[] = { ShaderResourceDescHeap.Get() };
+#endif
     pCmdList->SetDescriptorHeaps(_countof(descHeaps), descHeaps);
-
-    pCmdList->SetGraphicsRootDescriptorTable(1, SamplerDescHeap->GetGPUDescriptorHandleForHeapStart());
 
     LightConstants* pLightData;
     GlobalConstantBuffers[cmdIdx]->Map(0, nullptr, reinterpret_cast<void**>(&pLightData));
@@ -283,7 +270,7 @@ bool Renderer::Render(FXMVECTOR cameraPosition, FXMMATRIX view, FXMMATRIX projec
 
 #if 1
     CD3DX12_GPU_DESCRIPTOR_HANDLE globalConstantsHandle(ShaderResourceDescHeap->GetGPUDescriptorHandleForHeapStart(), GlobalConstantDescOffsets[cmdIdx], DescIncrementSize);
-    pCmdList->SetGraphicsRootDescriptorTable(3, globalConstantsHandle);
+    pCmdList->SetGraphicsRootDescriptorTable(1, globalConstantsHandle);
 #else
     pCmdList->SetGraphicsRootConstantBufferView(3, GlobalConstantBuffers[cmdIdx]->GetGPUVirtualAddress());
 #endif
