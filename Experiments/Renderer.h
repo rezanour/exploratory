@@ -109,6 +109,8 @@ private:
     ComPtr<ID3D12CommandAllocator> CmdAllocators[2];
     ComPtr<ID3D12CommandQueue> DefaultQueue;
     ComPtr<ID3D12GraphicsCommandList> CmdLists[2];
+    ComPtr<ID3D12CommandAllocator> BundleAllocators[1];
+    ComPtr<ID3D12GraphicsCommandList> Bundles[1];
     ComPtr<ID3D12PipelineState> PipelineStates[1];
     ComPtr<ID3D12DescriptorHeap> ShaderResourceDescHeap;
     ComPtr<ID3D12DescriptorHeap> DepthStencilDescHeap;
@@ -130,6 +132,8 @@ private:
 
     D3D12_CPU_DESCRIPTOR_HANDLE ShaderResourceDescHandle;
     UINT DescIncrementSize;
+
+    bool BundleCreated;
 };
 
 #endif // DX12 support
