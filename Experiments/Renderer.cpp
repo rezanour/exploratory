@@ -30,7 +30,8 @@ Renderer::Renderer(HWND window) :
     Window(window),
     RenderedEvent(nullptr),
     BackBufferIdx(0),
-    RenderFenceIdx(1)
+    RenderFenceIdx(1),
+    BundleCreated(false)
 {
 }
 
@@ -40,12 +41,33 @@ Renderer::~Renderer()
 
 bool Renderer::Initialize()
 {
-    HRESULT hr = D3D12CreateDevice(nullptr, D3D_FEATURE_LEVEL_11_0, IID_PPV_ARGS(Device.GetAddressOf()));
+    HRESULT hr;
+
+#ifdef _DEBUG
+    ComPtr<ID3D12Debug> debug;
+    hr = D3D12GetDebugInterface(IID_PPV_ARGS(debug.GetAddressOf()));
+    if (FAILED(hr))
+    {
+        LogError(L"Failed to get debug D3D12.");
+        return false;
+    }
+
+    debug->EnableDebugLayer();
+#endif
+
+    hr = D3D12CreateDevice(nullptr, D3D_FEATURE_LEVEL_11_0, IID_PPV_ARGS(Device.GetAddressOf()));
     if (FAILED(hr))
     {
         LogError(L"Failed to create D3D12 device.");
         return false;
     }
+
+    D3D12_FEATURE_DATA_D3D12_OPTIONS options;
+    Device->CheckFeatureSupport(D3D12_FEATURE_D3D12_OPTIONS, &options, sizeof(options));
+    std::wstring output = L"Raster order views supported: ";
+    output += options.ROVsSupported ? L"Yes" : L"No";
+    output += L"\n";
+    OutputDebugString(output.c_str());
 
     D3D12_COMMAND_QUEUE_DESC queueDesc;
     queueDesc.Type = D3D12_COMMAND_LIST_TYPE_DIRECT;
@@ -98,11 +120,17 @@ bool Renderer::Initialize()
     heapDesc.NumDescriptors = 1;
     CHK(Device->CreateDescriptorHeap(&heapDesc, IID_PPV_ARGS(SamplerDescHeap.GetAddressOf())));
 
-    for (int32_t i = 0; i < 2; ++i)
+    for (int32_t i = 0; i < _countof(CmdAllocators); ++i)
     {
         CHK(Device->CreateCommandAllocator(D3D12_COMMAND_LIST_TYPE_DIRECT, IID_PPV_ARGS(CmdAllocators[i].GetAddressOf())));
         CHK(Device->CreateCommandList(0, D3D12_COMMAND_LIST_TYPE_DIRECT, CmdAllocators[i].Get(), nullptr, IID_PPV_ARGS(CmdLists[i].GetAddressOf())));
         CHK(CmdLists[i]->Close());
+    }
+
+    for (int32_t i = 0; i < _countof(BundleAllocators); ++i)
+    {
+        CHK(Device->CreateCommandAllocator(D3D12_COMMAND_LIST_TYPE_BUNDLE, IID_PPV_ARGS(BundleAllocators[i].GetAddressOf())));
+        CHK(Device->CreateCommandList(0, D3D12_COMMAND_LIST_TYPE_BUNDLE, BundleAllocators[i].Get(), nullptr, IID_PPV_ARGS(Bundles[i].GetAddressOf())));
     }
 
     CHK(SwapChain->GetBuffer(0, IID_PPV_ARGS(BackBuffer.GetAddressOf())));
@@ -238,10 +266,25 @@ bool Renderer::Render(FXMVECTOR cameraPosition, FXMMATRIX view, FXMMATRIX projec
     ID3D12GraphicsCommandList* pCmdList = CmdLists[cmdIdx].Get();
     CHK(pCmdList->Reset(CmdAllocators[cmdIdx].Get(), nullptr));
 
-    pCmdList->SetGraphicsRootSignature(RootSignature.Get());
+    SetResourceBarrier(pCmdList, BackBuffer.Get(), D3D12_RESOURCE_STATE_PRESENT, D3D12_RESOURCE_STATE_RENDER_TARGET);
+
+    float clearClr[] = { 0.0f, 0.0f, 0.0f, 1.0f };
+    auto rtDescHandle = RenderTargetDescHeap->GetCPUDescriptorHandleForHeapStart();
+    pCmdList->ClearRenderTargetView(rtDescHandle, clearClr, 0, nullptr);
+    auto dsvDescHandle = DepthStencilDescHeap->GetCPUDescriptorHandleForHeapStart();
+    pCmdList->ClearDepthStencilView(dsvDescHandle, D3D12_CLEAR_FLAG_DEPTH | D3D12_CLEAR_FLAG_STENCIL, 1.0f, 0, 0, nullptr);
+    pCmdList->OMSetRenderTargets(1, &rtDescHandle, TRUE, &dsvDescHandle);
+
+    RECT clientRect;
+    GetClientRect(Window, &clientRect);
+    D3D12_VIEWPORT viewport = { 0.0f, 0.0f, (float)clientRect.right, (float)clientRect.bottom, 0.0f, 1.0f };
+    pCmdList->RSSetViewports(1, &viewport);
+    D3D12_RECT scissor = { 0, 0, clientRect.right, clientRect.bottom };
+    pCmdList->RSSetScissorRects(1, &scissor);
+
 #if 0
     pCmdList->SetGraphicsRootDescriptorTable(3, SamplerDescHeap->GetGPUDescriptorHandleForHeapStart());
-    ID3D12DescriptorHeap* descHeaps[] = {SamplerDescHeap.Get(), ShaderResourceDescHeap.Get()};
+    ID3D12DescriptorHeap* descHeaps[] = { SamplerDescHeap.Get(), ShaderResourceDescHeap.Get() };
 #else
     ID3D12DescriptorHeap* descHeaps[] = { ShaderResourceDescHeap.Get() };
 #endif
@@ -268,61 +311,79 @@ bool Renderer::Render(FXMVECTOR cameraPosition, FXMMATRIX view, FXMMATRIX projec
     pLightData->PointLights[2].Radius = 500.f;
     GlobalConstantBuffers[cmdIdx]->Unmap(0, nullptr);
 
-#if 1
-    CD3DX12_GPU_DESCRIPTOR_HANDLE globalConstantsHandle(ShaderResourceDescHeap->GetGPUDescriptorHandleForHeapStart(), GlobalConstantDescOffsets[cmdIdx], DescIncrementSize);
-    pCmdList->SetGraphicsRootDescriptorTable(1, globalConstantsHandle);
-#else
-    pCmdList->SetGraphicsRootConstantBufferView(3, GlobalConstantBuffers[cmdIdx]->GetGPUVirtualAddress());
-#endif
-
-    SetResourceBarrier(pCmdList, BackBuffer.Get(), D3D12_RESOURCE_STATE_PRESENT, D3D12_RESOURCE_STATE_RENDER_TARGET);
-
-    float clearClr[] = {0.0f, 0.0f, 0.0f, 1.0f};
-    auto rtDescHandle = RenderTargetDescHeap->GetCPUDescriptorHandleForHeapStart();
-    pCmdList->ClearRenderTargetView(rtDescHandle, clearClr, 0, nullptr);
-    auto dsvDescHandle = DepthStencilDescHeap->GetCPUDescriptorHandleForHeapStart();
-    pCmdList->ClearDepthStencilView(dsvDescHandle, D3D12_CLEAR_FLAG_DEPTH | D3D12_CLEAR_FLAG_STENCIL, 1.0f, 0, 0, nullptr);
-    pCmdList->OMSetRenderTargets(1, &rtDescHandle, TRUE, &dsvDescHandle);
-
-    RECT clientRect;
-    GetClientRect(Window, &clientRect);
-    D3D12_VIEWPORT viewport = {0.0f, 0.0f, (float)clientRect.right, (float)clientRect.bottom, 0.0f, 1.0f};
-    pCmdList->RSSetViewports(1, &viewport);
-    D3D12_RECT scissor = {0, 0, clientRect.right, clientRect.bottom};
-    pCmdList->RSSetScissorRects(1, &scissor);
-
     XMFLOAT4X4 viewProjection;
     XMStoreFloat4x4(&viewProjection, view * projection);
 
-    pCmdList->SetPipelineState(PipelineStates[0].Get());
-    pCmdList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
-    pCmdList->IASetVertexBuffers(0, 1, &TheScene->VtxBufView);
-    pCmdList->IASetIndexBuffer(&TheScene->IdxBufView);
-    for (auto& object : TheScene->Objects)
+    auto pBundle = Bundles[0].Get();
+    if (!BundleCreated)
     {
-#if 1
-	    UINT8* pData;
-	    object->ConstantBuffers[cmdIdx]->Map(0, nullptr, reinterpret_cast<void**>(&pData));
-        if (pData != nullptr)
-        {
-            float identityMtx[] = {1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1};
-            memcpy(pData, identityMtx, 16 * sizeof(float));
-	        memcpy(pData + 16 * sizeof(float), &viewProjection.m[0][0], 16 * sizeof(float));
-	        object->ConstantBuffers[cmdIdx]->Unmap(0, nullptr);
-        }
-        pCmdList->SetGraphicsRootConstantBufferView(0, object->ConstantBuffers[cmdIdx]->GetGPUVirtualAddress());
+        pBundle->SetGraphicsRootSignature(RootSignature.Get());
+#if 0
+        pBundle->SetGraphicsRootDescriptorTable(3, SamplerDescHeap->GetGPUDescriptorHandleForHeapStart());
+        ID3D12DescriptorHeap* descHeaps[] = { SamplerDescHeap.Get(), ShaderResourceDescHeap.Get() };
 #else
-        pCmdList->SetGraphicsRoot32BitConstants(0, &object->World.m[0][0], 0, 16);
-        pCmdList->SetGraphicsRoot32BitConstants(0, &viewProjection.m[0][0], 16, 16);
+        ID3D12DescriptorHeap* descHeaps[] = { ShaderResourceDescHeap.Get() };
 #endif
+        pBundle->SetDescriptorHeaps(_countof(descHeaps), descHeaps); // Descriptor heaps need to match cmdList's descriptor heaps
 
-        for (auto& mesh : object->Meshes)
+#if 1
+        CD3DX12_GPU_DESCRIPTOR_HANDLE globalConstantsHandle(ShaderResourceDescHeap->GetGPUDescriptorHandleForHeapStart(), GlobalConstantDescOffsets[cmdIdx], DescIncrementSize);
+        pBundle->SetGraphicsRootDescriptorTable(1, globalConstantsHandle);
+#else
+        pBundle->SetGraphicsRootConstantBufferView(3, GlobalConstantBuffers[cmdIdx]->GetGPUVirtualAddress());
+#endif
+        pBundle->SetPipelineState(PipelineStates[0].Get());
+        pBundle->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+        pBundle->IASetVertexBuffers(0, 1, &TheScene->VtxBufView);
+        pBundle->IASetIndexBuffer(&TheScene->IdxBufView);
+
+        for (auto& object : TheScene->Objects)
         {
-            CD3DX12_GPU_DESCRIPTOR_HANDLE albedoHandle(ShaderResourceDescHeap->GetGPUDescriptorHandleForHeapStart(), mesh.AlbedoDescIdx, DescIncrementSize);
-            pCmdList->SetGraphicsRootDescriptorTable(2, albedoHandle);
-            pCmdList->DrawIndexedInstanced(mesh.NumIndices, 1, mesh.StartIndex, 0, 0);
+#if 1
+	        UINT8* pData;
+	        object->ConstantBuffers[cmdIdx]->Map(0, nullptr, reinterpret_cast<void**>(&pData));
+            if (pData != nullptr)
+            {
+                float identityMtx[] = {1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1};
+                memcpy(pData, identityMtx, 16 * sizeof(float));
+	            memcpy(pData + 16 * sizeof(float), &viewProjection.m[0][0], 16 * sizeof(float));
+	            object->ConstantBuffers[cmdIdx]->Unmap(0, nullptr);
+            }
+
+            pBundle->SetGraphicsRootConstantBufferView(0, object->ConstantBuffers[cmdIdx]->GetGPUVirtualAddress());
+#else
+            pBundle->SetGraphicsRoot32BitConstants(0, &object->World.m[0][0], 0, 16);
+            pBundle->SetGraphicsRoot32BitConstants(0, &viewProjection.m[0][0], 16, 16);
+#endif
+            for (auto& mesh : object->Meshes)
+            {
+                CD3DX12_GPU_DESCRIPTOR_HANDLE albedoHandle(ShaderResourceDescHeap->GetGPUDescriptorHandleForHeapStart(), mesh.AlbedoDescIdx, DescIncrementSize);
+                pBundle->SetGraphicsRootDescriptorTable(2, albedoHandle);
+                pBundle->DrawIndexedInstanced(mesh.NumIndices, 1, mesh.StartIndex, 0, 0);
+            }
+        }
+
+        CHK(pBundle->Close());
+        BundleCreated = true;
+    }
+    else
+    {
+        // Just update world and projection matrices
+        for (auto& object : TheScene->Objects)
+        {
+            UINT8* pData;
+            object->ConstantBuffers[cmdIdx]->Map(0, nullptr, reinterpret_cast<void**>(&pData));
+            if (pData != nullptr)
+            {
+                float identityMtx[] = { 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1 };
+                memcpy(pData, identityMtx, 16 * sizeof(float));
+                memcpy(pData + 16 * sizeof(float), &viewProjection.m[0][0], 16 * sizeof(float));
+                object->ConstantBuffers[cmdIdx]->Unmap(0, nullptr);
+            }
         }
     }
+
+    pCmdList->ExecuteBundle(pBundle);
 
     SetResourceBarrier(pCmdList, BackBuffer.Get(), D3D12_RESOURCE_STATE_RENDER_TARGET, D3D12_RESOURCE_STATE_PRESENT);
 
