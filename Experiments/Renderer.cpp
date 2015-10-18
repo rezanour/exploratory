@@ -12,6 +12,7 @@
 typedef std::unordered_map<ComPtr<ID3D12Resource>, ComPtr<ID3D12Resource>, ComPtrHasher> ComResourceMap;
 
 const UINT kNumBackBuffers = 2;
+const UINT kSampleCount = 4;
 
 std::unique_ptr<Renderer> Renderer::Create(HWND window)
 {
@@ -85,7 +86,7 @@ bool Renderer::Initialize()
     CHK(CreateDXGIFactory2(dxgiFlag, IID_PPV_ARGS(factory.GetAddressOf())));
 
     DXGI_SWAP_CHAIN_DESC scd {};
-    scd.BufferCount = 2;
+    scd.BufferCount = kNumBackBuffers;
     scd.BufferUsage = DXGI_USAGE_RENDER_TARGET_OUTPUT;
     scd.BufferDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
     scd.SampleDesc.Count = 1;
@@ -94,12 +95,29 @@ bool Renderer::Initialize()
 
     scd.SwapEffect = DXGI_SWAP_EFFECT_FLIP_SEQUENTIAL;
     CHK(factory->CreateSwapChain(DefaultQueue.Get(), &scd, &SwapChain)); // Swap chain needs the queue so it can force a flush on it
+    CHK(SwapChain->GetBuffer(BackBufferIdx, IID_PPV_ARGS(BackBuffer.GetAddressOf())));
+
+    SwapChain->GetDesc(&scd);
+
+    float clearClr[] = { 0.0f, 0.0f, 0.0f, 1.0f };
+    CD3DX12_CLEAR_VALUE clearValue(scd.BufferDesc.Format, clearClr);
+    CD3DX12_RESOURCE_DESC texDesc = CD3DX12_RESOURCE_DESC::Tex2D(scd.BufferDesc.Format, scd.BufferDesc.Width, scd.BufferDesc.Height, 1, 1, kSampleCount, 0, D3D12_RESOURCE_FLAG_ALLOW_RENDER_TARGET);
+    CD3DX12_HEAP_PROPERTIES defaultHeapProps(D3D12_HEAP_TYPE_DEFAULT);
+    CHK(Device->CreateCommittedResource(
+        &defaultHeapProps,
+        D3D12_HEAP_FLAG_NONE,
+        &texDesc,
+        D3D12_RESOURCE_STATE_RENDER_TARGET,
+        &clearValue,
+        IID_PPV_ARGS(ColorBuffer.GetAddressOf())));
 
     D3D12_DESCRIPTOR_HEAP_DESC heapDesc;
     memset(&heapDesc, 0, sizeof(heapDesc));
     heapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_RTV;
     heapDesc.NumDescriptors = 1;
     CHK(Device->CreateDescriptorHeap(&heapDesc, IID_PPV_ARGS(RenderTargetDescHeap.GetAddressOf())));
+
+    Device->CreateRenderTargetView(ColorBuffer.Get(), nullptr, RenderTargetDescHeap->GetCPUDescriptorHandleForHeapStart());
 
     memset(&heapDesc, 0, sizeof(heapDesc));
     heapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_DSV;
@@ -133,20 +151,10 @@ bool Renderer::Initialize()
         CHK(Device->CreateCommandList(0, D3D12_COMMAND_LIST_TYPE_BUNDLE, BundleAllocators[i].Get(), nullptr, IID_PPV_ARGS(Bundles[i].GetAddressOf())));
     }
 
-    CHK(SwapChain->GetBuffer(0, IID_PPV_ARGS(BackBuffer.GetAddressOf())));
-    Device->CreateRenderTargetView(BackBuffer.Get(), nullptr, RenderTargetDescHeap->GetCPUDescriptorHandleForHeapStart());
-
-    RECT clientRect;
-    GetClientRect(Window, &clientRect);
-    CD3DX12_HEAP_PROPERTIES defaultHeapProps(D3D12_HEAP_TYPE_DEFAULT);
-    CD3DX12_RESOURCE_DESC texDesc = CD3DX12_RESOURCE_DESC::Tex2D(DXGI_FORMAT_D24_UNORM_S8_UINT, clientRect.right, clientRect.bottom, 1, 1, 1, 0, D3D12_RESOURCE_FLAG_ALLOW_DEPTH_STENCIL);
+    CD3DX12_RESOURCE_DESC depthTexDesc = CD3DX12_RESOURCE_DESC::Tex2D(DXGI_FORMAT_D24_UNORM_S8_UINT, scd.BufferDesc.Width, scd.BufferDesc.Height, 1, 1, kSampleCount, 0, D3D12_RESOURCE_FLAG_ALLOW_DEPTH_STENCIL);
     CD3DX12_CLEAR_VALUE depthClearValue(DXGI_FORMAT_D24_UNORM_S8_UINT, 1.0f, 0);
-    CHK(Device->CreateCommittedResource(&defaultHeapProps, D3D12_HEAP_FLAG_NONE, &texDesc, D3D12_RESOURCE_STATE_DEPTH_WRITE, &depthClearValue, IID_PPV_ARGS(DepthBuffer.GetAddressOf())));
-    depthStencilViewDesc.ViewDimension = D3D12_DSV_DIMENSION_TEXTURE2D;
-    depthStencilViewDesc.Format = DXGI_FORMAT_D24_UNORM_S8_UINT;
-    depthStencilViewDesc.Texture2D.MipSlice = 0;
-    depthStencilViewDesc.Flags = D3D12_DSV_FLAG_NONE;
-    Device->CreateDepthStencilView(DepthBuffer.Get(), &depthStencilViewDesc, DepthStencilDescHeap->GetCPUDescriptorHandleForHeapStart());
+    CHK(Device->CreateCommittedResource(&defaultHeapProps, D3D12_HEAP_FLAG_NONE, &depthTexDesc, D3D12_RESOURCE_STATE_DEPTH_WRITE, &depthClearValue, IID_PPV_ARGS(DepthBuffer.GetAddressOf())));
+    Device->CreateDepthStencilView(DepthBuffer.Get(), nullptr, DepthStencilDescHeap->GetCPUDescriptorHandleForHeapStart());
 
     CHK(Device->CreateFence(0, D3D12_FENCE_FLAG_NONE, IID_PPV_ARGS(RenderFence.GetAddressOf())));
 
@@ -216,7 +224,7 @@ bool Renderer::Initialize()
         D3D12_DEFAULT_DEPTH_BIAS_CLAMP,
         D3D12_DEFAULT_SLOPE_SCALED_DEPTH_BIAS,
         TRUE,
-        FALSE,
+        (kSampleCount > 1),
         FALSE,
         0,
         D3D12_CONSERVATIVE_RASTERIZATION_MODE_OFF
@@ -237,9 +245,9 @@ bool Renderer::Initialize()
     pipelineDesc.InputLayout.NumElements = _countof(inputElemDesc);
     pipelineDesc.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;
     pipelineDesc.NumRenderTargets = 1;
-    pipelineDesc.RTVFormats[0] = DXGI_FORMAT_R8G8B8A8_UNORM;
+    pipelineDesc.RTVFormats[0] = scd.BufferDesc.Format;
     pipelineDesc.DSVFormat = DXGI_FORMAT_D24_UNORM_S8_UINT;
-    pipelineDesc.SampleDesc.Count = 1;
+    pipelineDesc.SampleDesc.Count = kSampleCount;
     CHK(Device->CreateGraphicsPipelineState(&pipelineDesc, IID_PPV_ARGS(PipelineStates[0].GetAddressOf())));
 
     for (size_t iBuf = 0; iBuf < _countof(GlobalConstantBuffers); ++iBuf)
@@ -266,8 +274,6 @@ bool Renderer::Render(FXMVECTOR cameraPosition, FXMMATRIX view, FXMMATRIX projec
     ID3D12GraphicsCommandList* pCmdList = CmdLists[cmdIdx].Get();
     CHK(pCmdList->Reset(CmdAllocators[cmdIdx].Get(), nullptr));
 
-    SetResourceBarrier(pCmdList, BackBuffer.Get(), D3D12_RESOURCE_STATE_PRESENT, D3D12_RESOURCE_STATE_RENDER_TARGET);
-
     float clearClr[] = { 0.0f, 0.0f, 0.0f, 1.0f };
     auto rtDescHandle = RenderTargetDescHeap->GetCPUDescriptorHandleForHeapStart();
     pCmdList->ClearRenderTargetView(rtDescHandle, clearClr, 0, nullptr);
@@ -275,11 +281,10 @@ bool Renderer::Render(FXMVECTOR cameraPosition, FXMMATRIX view, FXMMATRIX projec
     pCmdList->ClearDepthStencilView(dsvDescHandle, D3D12_CLEAR_FLAG_DEPTH | D3D12_CLEAR_FLAG_STENCIL, 1.0f, 0, 0, nullptr);
     pCmdList->OMSetRenderTargets(1, &rtDescHandle, TRUE, &dsvDescHandle);
 
-    RECT clientRect;
-    GetClientRect(Window, &clientRect);
-    D3D12_VIEWPORT viewport = { 0.0f, 0.0f, (float)clientRect.right, (float)clientRect.bottom, 0.0f, 1.0f };
+    auto colorBufDesc = ColorBuffer->GetDesc();
+    D3D12_VIEWPORT viewport = { 0.0f, 0.0f, (float)colorBufDesc.Width, (float)colorBufDesc.Height, 0.0f, 1.0f };
     pCmdList->RSSetViewports(1, &viewport);
-    D3D12_RECT scissor = { 0, 0, clientRect.right, clientRect.bottom };
+    D3D12_RECT scissor = { 0, 0, (long)colorBufDesc.Width, (long)colorBufDesc.Height };
     pCmdList->RSSetScissorRects(1, &scissor);
 
 #if 0
@@ -385,7 +390,25 @@ bool Renderer::Render(FXMVECTOR cameraPosition, FXMMATRIX view, FXMMATRIX projec
 
     pCmdList->ExecuteBundle(pBundle);
 
-    SetResourceBarrier(pCmdList, BackBuffer.Get(), D3D12_RESOURCE_STATE_RENDER_TARGET, D3D12_RESOURCE_STATE_PRESENT);
+__pragma(warning(push))
+__pragma(warning(disable:4127))
+    if (kSampleCount > 1)
+__pragma(warning(pop))
+    {
+        SetResourceBarrier(pCmdList, ColorBuffer.Get(), D3D12_RESOURCE_STATE_RENDER_TARGET, D3D12_RESOURCE_STATE_RESOLVE_SOURCE);
+        SetResourceBarrier(pCmdList, BackBuffer.Get(), D3D12_RESOURCE_STATE_PRESENT, D3D12_RESOURCE_STATE_RESOLVE_DEST);
+        pCmdList->ResolveSubresource(BackBuffer.Get(), 0, ColorBuffer.Get(), 0, colorBufDesc.Format);
+        SetResourceBarrier(pCmdList, BackBuffer.Get(), D3D12_RESOURCE_STATE_RESOLVE_DEST, D3D12_RESOURCE_STATE_PRESENT);
+        SetResourceBarrier(pCmdList, ColorBuffer.Get(), D3D12_RESOURCE_STATE_RESOLVE_SOURCE, D3D12_RESOURCE_STATE_RENDER_TARGET);
+    }
+    else
+    {
+        SetResourceBarrier(pCmdList, ColorBuffer.Get(), D3D12_RESOURCE_STATE_RENDER_TARGET, D3D12_RESOURCE_STATE_COPY_SOURCE);
+        SetResourceBarrier(pCmdList, BackBuffer.Get(), D3D12_RESOURCE_STATE_PRESENT, D3D12_RESOURCE_STATE_COPY_DEST);
+        pCmdList->CopyResource(BackBuffer.Get(), ColorBuffer.Get());
+        SetResourceBarrier(pCmdList, BackBuffer.Get(), D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_PRESENT);
+        SetResourceBarrier(pCmdList, ColorBuffer.Get(), D3D12_RESOURCE_STATE_COPY_SOURCE, D3D12_RESOURCE_STATE_RENDER_TARGET);
+    }
 
     CHK(pCmdList->Close());
 
@@ -402,7 +425,6 @@ bool Renderer::Present(bool vsync)
 
     BackBufferIdx = (BackBufferIdx + 1) % kNumBackBuffers;
     CHK(SwapChain->GetBuffer(BackBufferIdx, IID_PPV_ARGS(BackBuffer.ReleaseAndGetAddressOf())));
-    Device->CreateRenderTargetView(BackBuffer.Get(), nullptr, RenderTargetDescHeap->GetCPUDescriptorHandleForHeapStart());
 
     // Wait until rendering is finished
     const auto fenceIdx = RenderFenceIdx++;

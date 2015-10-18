@@ -119,7 +119,7 @@ private:
     ComPtr<ID3D12Fence> RenderFence;
     ComPtr<ID3D12Resource> BackBuffer;
     ComPtr<ID3D12Resource> DepthBuffer;
-    D3D12_DEPTH_STENCIL_VIEW_DESC depthStencilViewDesc;
+    ComPtr<ID3D12Resource> ColorBuffer;
     ComPtr<ID3D12RootSignature> RootSignature;
     HANDLE RenderedEvent;
     UINT BackBufferIdx;
