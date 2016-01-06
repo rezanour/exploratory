@@ -1,5 +1,22 @@
 #pragma once
 
+class FrameProvider;
+
+class Frame : NonCopyable
+{
+public:
+    virtual ~Frame();
+
+    PXCCapture::Sample* GetSample() { return _sample; }
+
+private:
+    friend class FrameProvider;
+    Frame(PXCSenseManager* senseManager, PXCCapture::Sample* sample);
+
+    PXCSenseManager* _senseManager;
+    PXCCapture::Sample* _sample;
+};
+
 // Interface for retrieving a stream of frame data.
 // The source could be an imaging device (camera, etc...) or playback from
 // previously stored database of frames.
@@ -13,9 +30,11 @@ public:
 
     virtual ~FrameProvider();
 
+    std::shared_ptr<Frame> GetFrame();
+
 private:
     FrameProvider();
 
     PXCSession* _session;
-    PXCCaptureManager* _captureManager;
+    PXCSenseManager* _senseManager;
 };

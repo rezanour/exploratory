@@ -36,6 +36,8 @@ int WINAPI WinMain(HINSTANCE instance, HINSTANCE, LPSTR, int)
         return -2;
     }
 
+    std::unique_ptr<uint32_t[]> buffer(new uint32_t[640 * 480]);
+
     // Main loop
     MSG msg {};
     while (msg.message != WM_QUIT)
@@ -55,6 +57,14 @@ int WINAPI WinMain(HINSTANCE instance, HINSTANCE, LPSTR, int)
                 // Exit
                 break;
             }
+
+            auto frame = frameProvider->GetFrame();
+            PXCImage::ImageData imageData{};
+            frame->GetSample()->color->AcquireAccess(PXCImage::ACCESS_READ, &imageData);
+
+            // TODO: doesn't seem to work. I only get black pixels here! Need to debug
+
+            frame->GetSample()->color->ReleaseAccess(&imageData);
         }
     }
 

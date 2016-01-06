@@ -2,6 +2,18 @@
 #include "FrameProvider.h"
 #include "Debug.h"
 
+Frame::Frame(PXCSenseManager* senseManager, PXCCapture::Sample* sample)
+    : _senseManager(senseManager), _sample(sample)
+{
+}
+
+Frame::~Frame()
+{
+    _senseManager->ReleaseFrame();
+    _senseManager = nullptr;
+    _sample = nullptr;
+}
+
 bool FrameProvider::Create(std::shared_ptr<FrameProvider>* frameProvider)
 {
     frameProvider->reset(new FrameProvider());
@@ -10,17 +22,33 @@ bool FrameProvider::Create(std::shared_ptr<FrameProvider>* frameProvider)
 
 FrameProvider::FrameProvider()
     : _session(PXCSession::CreateInstance())
-    , _captureManager(_session->CreateCaptureManager())
+    , _senseManager(_session->CreateSenseManager())
 {
-    assert(_session && _captureManager);
+    assert(_session && _senseManager);
+
+    _senseManager->EnableStream(PXCCapture::StreamType::STREAM_TYPE_COLOR, 640, 480);
+    _senseManager->Init();
+}
+
+std::shared_ptr<Frame> FrameProvider::GetFrame()
+{
+    // This function blocks until a color sample is ready
+    if (_senseManager->AcquireFrame(true) < PXC_STATUS_NO_ERROR)
+    {
+        assert(false);
+        return nullptr;
+    }
+
+    // retrieve the sample
+    return std::shared_ptr<Frame>(new Frame(_senseManager, _senseManager->QuerySample()));
 }
 
 FrameProvider::~FrameProvider()
 {
-    if (_captureManager)
+    if (_senseManager)
     {
-        _captureManager->Release();
-        _captureManager = nullptr;
+        _senseManager->Release();
+        _senseManager = nullptr;
     }
 
     if (_session)

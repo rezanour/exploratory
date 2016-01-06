@@ -10,7 +10,7 @@
 #include <memory>
 
 // Intel RealSense SDK
-#include <pxccapturemanager.h>
-#include <pxccapture.h>
+#include <pxcsession.h>
+#include <pxcsensemanager.h>
 
 #include "ExperimentsCommon.h"
