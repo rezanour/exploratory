@@ -1,5 +1,6 @@
 #include "Precomp.h"
 #include "Debug.h"
+#include "FrameProvider.h"
 
 // Constants
 static const wchar_t ClassName[] = L"Vision Experiments Test Application";
@@ -28,6 +29,13 @@ int WINAPI WinMain(HINSTANCE instance, HINSTANCE, LPSTR, int)
     ShowWindow(Window, SW_SHOW);
     UpdateWindow(Window);
 
+    std::shared_ptr<FrameProvider> frameProvider;
+    if (!FrameProvider::Create(&frameProvider))
+    {
+        assert(false);
+        return -2;
+    }
+
     // Main loop
     MSG msg {};
     while (msg.message != WM_QUIT)
@@ -50,6 +58,7 @@ int WINAPI WinMain(HINSTANCE instance, HINSTANCE, LPSTR, int)
         }
     }
 
+    frameProvider = nullptr;
     Shutdown();
     return 0;
 }

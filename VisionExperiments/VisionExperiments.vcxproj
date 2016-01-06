@@ -57,10 +57,13 @@
       <SDLCheck>true</SDLCheck>
       <TreatWarningAsError>true</TreatWarningAsError>
       <PrecompiledHeaderFile>Precomp.h</PrecompiledHeaderFile>
+      <AdditionalIncludeDirectories>%RSSDK_DIR%include;%RSSDK_DIR%sample/common/include;</AdditionalIncludeDirectories>
     </ClCompile>
     <Link>
       <SubSystem>Windows</SubSystem>
       <GenerateDebugInformation>true</GenerateDebugInformation>
+      <AdditionalLibraryDirectories>%RSSDK_DIR%lib/x64;%RSSDK_DIR%sample/common/lib/x64/$(PlatformToolset)/</AdditionalLibraryDirectories>
+      <AdditionalDependencies>libpxcmd_d.lib;kernel32.lib;user32.lib;gdi32.lib;winspool.lib;comdlg32.lib;advapi32.lib;shell32.lib;ole32.lib;oleaut32.lib;uuid.lib;odbc32.lib;odbccp32.lib;%(AdditionalDependencies)</AdditionalDependencies>
     </Link>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
@@ -74,20 +77,26 @@
       <SDLCheck>true</SDLCheck>
       <TreatWarningAsError>true</TreatWarningAsError>
       <PrecompiledHeaderFile>Precomp.h</PrecompiledHeaderFile>
+      <AdditionalIncludeDirectories>%RSSDK_DIR%include;%RSSDK_DIR%sample/common/include;</AdditionalIncludeDirectories>
     </ClCompile>
     <Link>
       <SubSystem>Windows</SubSystem>
       <EnableCOMDATFolding>true</EnableCOMDATFolding>
       <OptimizeReferences>true</OptimizeReferences>
       <GenerateDebugInformation>true</GenerateDebugInformation>
+      <AdditionalLibraryDirectories>%RSSDK_DIR%lib/x64;%RSSDK_DIR%sample/common/lib/x64/$(PlatformToolset)/</AdditionalLibraryDirectories>
+      <AdditionalDependencies>libpxcmd.lib;kernel32.lib;user32.lib;gdi32.lib;winspool.lib;comdlg32.lib;advapi32.lib;shell32.lib;ole32.lib;oleaut32.lib;uuid.lib;odbc32.lib;odbccp32.lib;%(AdditionalDependencies)</AdditionalDependencies>
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClInclude Include="Debug.h" />
+    <ClInclude Include="ExperimentsCommon.h" />
+    <ClInclude Include="FrameProvider.h" />
     <ClInclude Include="Precomp.h" />
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="Debug.cpp" />
+    <ClCompile Include="FrameProvider.cpp" />
     <ClCompile Include="Main.cpp" />
     <ClCompile Include="Precomp.cpp">
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">Create</PrecompiledHeader>
