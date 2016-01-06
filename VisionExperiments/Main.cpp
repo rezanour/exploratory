@@ -1,4 +1,5 @@
 #include "Precomp.h"
+#include "Debug.h"
 
 // Constants
 static const wchar_t ClassName[] = L"Vision Experiments Test Application";
@@ -64,7 +65,7 @@ bool Initialize()
 
     if (!RegisterClassEx(&wcx))
     {
-        //LogError(L"Failed to initialize window class.");
+        LogError(L"Failed to initialize window class.");
         return false;
     }
 
@@ -81,7 +82,7 @@ bool Initialize()
 
     if (!Window)
     {
-        //LogError(L"Failed to create window.");
+        LogError(L"Failed to create window.");
         return false;
     }
 
