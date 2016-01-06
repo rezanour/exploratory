@@ -2,6 +2,7 @@
 #include "Renderer.h"
 #include "Debug.h"
 #include "Shaders/SimpleTransformVS.h"
+#include "Shaders/SimpleTransformVS_Stereo.h"
 #include "Shaders/SimpleTexturePS.h"
 
 #if defined (ENABLE_DX12_SUPPORT)
@@ -233,8 +234,8 @@ bool Renderer::Initialize()
     D3D12_GRAPHICS_PIPELINE_STATE_DESC pipelineDesc;
     memset(&pipelineDesc, 0, sizeof(pipelineDesc));
     pipelineDesc.pRootSignature = RootSignature.Get();
-    pipelineDesc.VS.pShaderBytecode = SimpleTransformVS;
-    pipelineDesc.VS.BytecodeLength = sizeof(SimpleTransformVS);
+    pipelineDesc.VS.pShaderBytecode = SimpleTransformVS_Stereo;
+    pipelineDesc.VS.BytecodeLength = sizeof(SimpleTransformVS_Stereo);
     pipelineDesc.PS.pShaderBytecode = SimpleTexturePS;//SimplePS;
     pipelineDesc.PS.BytecodeLength = sizeof(SimpleTexturePS);//sizeof(SimplePS);
     pipelineDesc.BlendState = CD3DX12_BLEND_DESC(D3D12_DEFAULT);
@@ -352,7 +353,8 @@ bool Renderer::Render(FXMVECTOR cameraPosition, FXMMATRIX view, FXMMATRIX projec
                 float identityMtx[] = {1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1};
                 memcpy(pData, identityMtx, 16 * sizeof(float));
 	            memcpy(pData + 16 * sizeof(float), &viewProjection.m[0][0], 16 * sizeof(float));
-	            object->ConstantBuffers[cmdIdx]->Unmap(0, nullptr);
+                memcpy(pData + 32 * sizeof(float), &viewProjection.m[0][0], 16 * sizeof(float));
+                object->ConstantBuffers[cmdIdx]->Unmap(0, nullptr);
             }
 
             pBundle->SetGraphicsRootConstantBufferView(0, object->ConstantBuffers[cmdIdx]->GetGPUVirtualAddress());
@@ -364,7 +366,7 @@ bool Renderer::Render(FXMVECTOR cameraPosition, FXMMATRIX view, FXMMATRIX projec
             {
                 CD3DX12_GPU_DESCRIPTOR_HANDLE albedoHandle(ShaderResourceDescHeap->GetGPUDescriptorHandleForHeapStart(), mesh.AlbedoDescIdx, DescIncrementSize);
                 pBundle->SetGraphicsRootDescriptorTable(2, albedoHandle);
-                pBundle->DrawIndexedInstanced(mesh.NumIndices, 1, mesh.StartIndex, 0, 0);
+                pBundle->DrawIndexedInstanced(mesh.NumIndices, 2, mesh.StartIndex, 0, 0);
             }
         }
 
@@ -383,6 +385,7 @@ bool Renderer::Render(FXMVECTOR cameraPosition, FXMMATRIX view, FXMMATRIX projec
                 float identityMtx[] = { 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1 };
                 memcpy(pData, identityMtx, 16 * sizeof(float));
                 memcpy(pData + 16 * sizeof(float), &viewProjection.m[0][0], 16 * sizeof(float));
+                memcpy(pData + 32 * sizeof(float), &viewProjection.m[0][0], 16 * sizeof(float));
                 object->ConstantBuffers[cmdIdx]->Unmap(0, nullptr);
             }
         }
@@ -596,7 +599,11 @@ bool Renderer::CreateTexture2D(const void* pData, size_t size, DXGI_FORMAT forma
         }
         pUploadTex->Unmap(0, nullptr); // TODO: Do we need to pass in the written range???
 
+#ifdef _DEBUG
         assert(pSrc - reinterpret_cast<const UINT8*>(pData) == (ptrdiff_t)size);
+#else
+        (void)size;
+#endif
     }
 
     CD3DX12_HEAP_PROPERTIES defaultHeapProps(D3D12_HEAP_TYPE_DEFAULT);
@@ -706,7 +713,7 @@ bool Renderer::AddMeshes(const std::wstring& contentRoot, const std::wstring& mo
 
         for (int32_t i = 0; i < 2; ++i)
         {
-            CreateUploadBuffer(nullptr, 32 * sizeof(float), obj->ConstantBuffers[i].GetAddressOf());
+            CreateUploadBuffer(nullptr, 48 * sizeof(float), obj->ConstantBuffers[i].GetAddressOf());
         }
 
         for (int iPart = 0; iPart < (int)object.NumParts; ++iPart)
