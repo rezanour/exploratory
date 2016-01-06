@@ -2,6 +2,10 @@
 #include "Debug.h"
 #include "FrameProvider.h"
 
+#include <d3d11.h>
+#include <wrl.h>
+using namespace Microsoft::WRL;
+
 // Constants
 static const wchar_t ClassName[] = L"Vision Experiments Test Application";
 static const uint32_t ScreenWidth = 1280;
@@ -10,6 +14,13 @@ static const uint32_t ScreenHeight = 720;
 // Application variables
 static HINSTANCE Instance;
 static HWND Window;
+
+// Basic output capabilities
+ComPtr<ID3D11Device> Device;
+ComPtr<ID3D11DeviceContext> Context;
+ComPtr<IDXGISwapChain> SwapChain;
+ComPtr<ID3D11Texture2D> BackBuffer;
+ComPtr<ID3D11RenderTargetView> BackBufferRTV;
 
 // Local methods
 static bool Initialize();
@@ -60,11 +71,23 @@ int WINAPI WinMain(HINSTANCE instance, HINSTANCE, LPSTR, int)
 
             auto frame = frameProvider->GetFrame();
             PXCImage::ImageData imageData{};
-            frame->GetSample()->color->AcquireAccess(PXCImage::ACCESS_READ, &imageData);
+            imageData.format = PXCImage::PixelFormat::PIXEL_FORMAT_RGB32;
+            imageData.pitches[0] = 640;
+            imageData.planes[0] = (pxcBYTE*)buffer.get();
+
+            frame->GetSample()->color->ExportData(&imageData);
+
+            D3D11_BOX box{};
+            box.right = 640;
+            box.bottom = 480;
+            box.back = 1;
+            Context->UpdateSubresource(BackBuffer.Get(), 0, &box, imageData.planes[0], imageData.pitches[0] * sizeof(uint32_t), imageData.pitches[0] * sizeof(uint32_t) * 480);
 
             // TODO: doesn't seem to work. I only get black pixels here! Need to debug
 
-            frame->GetSample()->color->ReleaseAccess(&imageData);
+            //frame->GetSample()->color->ReleaseAccess(&imageData);
+
+            SwapChain->Present(1, 0);
         }
     }
 
@@ -75,7 +98,7 @@ int WINAPI WinMain(HINSTANCE instance, HINSTANCE, LPSTR, int)
 
 bool Initialize()
 {
-    WNDCLASSEX wcx {};
+    WNDCLASSEX wcx{};
     wcx.cbSize = sizeof(wcx);
     wcx.hbrBackground = static_cast<HBRUSH>(GetStockObject(BLACK_BRUSH));
     wcx.hInstance = Instance;
@@ -88,9 +111,9 @@ bool Initialize()
         return false;
     }
 
-    DWORD style { WS_OVERLAPPEDWINDOW & ~(WS_THICKFRAME | WS_MAXIMIZEBOX) };
+    DWORD style{ WS_OVERLAPPEDWINDOW & ~(WS_THICKFRAME | WS_MAXIMIZEBOX) };
 
-    RECT rc {};
+    RECT rc{};
     rc.right = ScreenWidth;
     rc.bottom = ScreenHeight;
     AdjustWindowRect(&rc, style, FALSE);
@@ -105,11 +128,50 @@ bool Initialize()
         return false;
     }
 
+    DXGI_SWAP_CHAIN_DESC scd{};
+    scd.BufferCount = 2;
+    scd.BufferDesc.Width = ScreenWidth;
+    scd.BufferDesc.Height = ScreenHeight;
+    scd.BufferDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
+    scd.BufferUsage = DXGI_USAGE_RENDER_TARGET_OUTPUT;
+    scd.OutputWindow = Window;
+    scd.SampleDesc.Count = 1;
+    scd.Windowed = TRUE;
+
+    HRESULT hr = D3D11CreateDeviceAndSwapChain(nullptr, D3D_DRIVER_TYPE_HARDWARE,
+        nullptr, 0, nullptr, 0, D3D11_SDK_VERSION, &scd, &SwapChain, &Device,
+        nullptr, &Context);
+    if (FAILED(hr))
+    {
+        LogError(L"Failed to create D3D device or swapchain.");
+        return false;
+    }
+
+    hr = SwapChain->GetBuffer(0, IID_PPV_ARGS(&BackBuffer));
+    if (FAILED(hr))
+    {
+        LogError(L"Failed to retrieve the back buffer.");
+        return false;
+    }
+
+    hr = Device->CreateRenderTargetView(BackBuffer.Get(), nullptr, &BackBufferRTV);
+    if (FAILED(hr))
+    {
+        LogError(L"Failed to create render target view.");
+        return false;
+    }
+
     return true;
 }
 
 void Shutdown()
 {
+    BackBufferRTV = nullptr;
+    BackBuffer = nullptr;
+    SwapChain = nullptr;
+    Context = nullptr;
+    Device = nullptr;
+
     DestroyWindow(Window);
     Window = nullptr;
 }
