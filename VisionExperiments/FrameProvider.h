@@ -5,6 +5,7 @@ class FrameProvider;
 class Frame : NonCopyable
 {
 public:
+    Frame(Frame&& other);
     ~Frame();
 
     PXCCapture::Sample* GetSample() { return _sample; }
@@ -12,8 +13,6 @@ public:
 private:
     friend class FrameProvider;
     Frame(PXCSenseManager* senseManager, PXCCapture::Sample* sample);
-    // Allow FrameProvider to construct and move result out as return value
-    Frame(Frame&& other);
 
     PXCSenseManager* _senseManager;
     PXCCapture::Sample* _sample;

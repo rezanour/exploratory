@@ -8,7 +8,7 @@ Frame::Frame(PXCSenseManager* senseManager, PXCCapture::Sample* sample)
 }
 
 Frame::Frame(Frame&& other)
-    : _senseManager(other._senseManager), _sample(other_sample)
+    : _senseManager(other._senseManager), _sample(other._sample)
 {
     other._senseManager = nullptr;
     other._sample = nullptr;
@@ -46,7 +46,7 @@ Frame FrameProvider::GetFrame()
     if (_senseManager->AcquireFrame(true) < PXC_STATUS_NO_ERROR)
     {
         assert(false);
-        return nullptr;
+        return Frame(_senseManager, nullptr);
     }
 
     // retrieve the sample
