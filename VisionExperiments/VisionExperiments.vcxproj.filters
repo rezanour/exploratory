@@ -24,7 +24,7 @@
     <ClInclude Include="FrameProvider.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="ExperimentsCommon.h">
+    <ClInclude Include="Common.h">
       <Filter>Header Files</Filter>
     </ClInclude>
   </ItemGroup>

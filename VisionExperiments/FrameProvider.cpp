@@ -7,9 +7,19 @@ Frame::Frame(PXCSenseManager* senseManager, PXCCapture::Sample* sample)
 {
 }
 
+Frame::Frame(Frame&& other)
+    : _senseManager(other._senseManager), _sample(other_sample)
+{
+    other._senseManager = nullptr;
+    other._sample = nullptr;
+}
+
 Frame::~Frame()
 {
-    _senseManager->ReleaseFrame();
+    if (_senseManager)
+    {
+        _senseManager->ReleaseFrame();
+    }
     _senseManager = nullptr;
     _sample = nullptr;
 }
@@ -30,7 +40,7 @@ FrameProvider::FrameProvider()
     _senseManager->Init();
 }
 
-std::shared_ptr<Frame> FrameProvider::GetFrame()
+Frame FrameProvider::GetFrame()
 {
     // This function blocks until a color sample is ready
     if (_senseManager->AcquireFrame(true) < PXC_STATUS_NO_ERROR)
@@ -40,7 +50,7 @@ std::shared_ptr<Frame> FrameProvider::GetFrame()
     }
 
     // retrieve the sample
-    return std::shared_ptr<Frame>(new Frame(_senseManager, _senseManager->QuerySample()));
+    return Frame(_senseManager, _senseManager->QuerySample());
 }
 
 FrameProvider::~FrameProvider()

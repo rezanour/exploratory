@@ -13,4 +13,4 @@
 #include <pxcsession.h>
 #include <pxcsensemanager.h>
 
-#include "ExperimentsCommon.h"
+#include "Common.h"

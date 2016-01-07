@@ -69,23 +69,19 @@ int WINAPI WinMain(HINSTANCE instance, HINSTANCE, LPSTR, int)
                 break;
             }
 
-            auto frame = frameProvider->GetFrame();
             PXCImage::ImageData imageData{};
             imageData.format = PXCImage::PixelFormat::PIXEL_FORMAT_RGB32;
             imageData.pitches[0] = 640;
             imageData.planes[0] = (pxcBYTE*)buffer.get();
 
-            frame->GetSample()->color->ExportData(&imageData);
+            auto frame = frameProvider->GetFrame();
+            frame.GetSample()->color->ExportData(&imageData);
 
             D3D11_BOX box{};
             box.right = 640;
             box.bottom = 480;
             box.back = 1;
             Context->UpdateSubresource(BackBuffer.Get(), 0, &box, imageData.planes[0], imageData.pitches[0] * sizeof(uint32_t), imageData.pitches[0] * sizeof(uint32_t) * 480);
-
-            // TODO: doesn't seem to work. I only get black pixels here! Need to debug
-
-            //frame->GetSample()->color->ReleaseAccess(&imageData);
 
             SwapChain->Present(1, 0);
         }
