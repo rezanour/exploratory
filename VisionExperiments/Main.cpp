@@ -41,13 +41,11 @@ int WINAPI WinMain(HINSTANCE instance, HINSTANCE, LPSTR, int)
     UpdateWindow(Window);
 
     std::shared_ptr<FrameProvider> frameProvider;
-    if (!FrameProvider::Create(&frameProvider))
+    if (!CreateFrameProvider(false, &frameProvider))
     {
         assert(false);
         return -2;
     }
-
-    std::unique_ptr<uint32_t[]> buffer(new uint32_t[640 * 480]);
 
     // Main loop
     MSG msg {};
@@ -69,19 +67,17 @@ int WINAPI WinMain(HINSTANCE instance, HINSTANCE, LPSTR, int)
                 break;
             }
 
-            PXCImage::ImageData imageData{};
-            imageData.format = PXCImage::PixelFormat::PIXEL_FORMAT_RGB32;
-            imageData.pitches[0] = 640;
-            imageData.planes[0] = (pxcBYTE*)buffer.get();
+            Frame frame;
+            if (frameProvider->AcquireFrame(&frame))
+            {
+                D3D11_BOX box{};
+                box.right = 640;
+                box.bottom = 480;
+                box.back = 1;
+                Context->UpdateSubresource(BackBuffer.Get(), 0, &box, frame.Data, frame.Width * sizeof(uint32_t), frame.Width * frame.Height * sizeof(uint32_t));
 
-            auto frame = frameProvider->GetFrame();
-            frame.GetSample()->color->ExportData(&imageData);
-
-            D3D11_BOX box{};
-            box.right = 640;
-            box.bottom = 480;
-            box.back = 1;
-            Context->UpdateSubresource(BackBuffer.Get(), 0, &box, imageData.planes[0], imageData.pitches[0] * sizeof(uint32_t), imageData.pitches[0] * sizeof(uint32_t) * 480);
+                frameProvider->ReleaseFrame(frame);
+            }
 
             SwapChain->Present(1, 0);
         }
