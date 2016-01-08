@@ -74,7 +74,7 @@ int WINAPI WinMain(HINSTANCE instance, HINSTANCE, LPSTR, int)
                 box.right = 640;
                 box.bottom = 480;
                 box.back = 1;
-                Context->UpdateSubresource(BackBuffer.Get(), 0, &box, frame.Data, frame.Width * sizeof(uint32_t), frame.Width * frame.Height * sizeof(uint32_t));
+                Context->UpdateSubresource(BackBuffer.Get(), 0, &box, frame.Data, frame.Width, frame.Width * frame.Height);
 
                 frameProvider->ReleaseFrame(frame);
             }
@@ -124,7 +124,7 @@ bool Initialize()
     scd.BufferCount = 2;
     scd.BufferDesc.Width = ScreenWidth;
     scd.BufferDesc.Height = ScreenHeight;
-    scd.BufferDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
+    scd.BufferDesc.Format = DXGI_FORMAT_B8G8R8A8_UNORM;
     scd.BufferUsage = DXGI_USAGE_RENDER_TARGET_OUTPUT;
     scd.OutputWindow = Window;
     scd.SampleDesc.Count = 1;
