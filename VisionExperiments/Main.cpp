@@ -74,7 +74,7 @@ int WINAPI WinMain(HINSTANCE instance, HINSTANCE, LPSTR, int)
                 box.right = 640;
                 box.bottom = 480;
                 box.back = 1;
-                Context->UpdateSubresource(BackBuffer.Get(), 0, &box, frame.Data, frame.Width, frame.Width * frame.Height);
+                Context->UpdateSubresource(BackBuffer.Get(), 0, &box, frame.ColorData, frame.Width, frame.Width * frame.Height);
 
                 frameProvider->ReleaseFrame(frame);
             }

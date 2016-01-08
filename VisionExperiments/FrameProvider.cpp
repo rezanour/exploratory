@@ -98,7 +98,7 @@ bool IntelRealSenseFrameProvider::AcquireFrame(Frame* frame)
 
     frame->Width = data.pitches[0];
     frame->Height = 480;
-    frame->Data = data.planes[0];
+    frame->ColorData = data.planes[0];
 
     return true;
 }

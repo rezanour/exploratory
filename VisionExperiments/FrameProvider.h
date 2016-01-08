@@ -5,7 +5,7 @@ struct Frame
 {
     uint32_t Width;
     uint32_t Height;
-    void*    Data;
+    void*    ColorData;
 };
 
 // Interface for retrieving a stream of frame data.
