@@ -22,6 +22,29 @@ private:
     PXCSenseManager* _senseManager = nullptr;
 };
 
+// Implementation for Software (no camera) provider
+class SoftwareFrameProvider : public FrameProvider, NonCopyable
+{
+public:
+    virtual ~SoftwareFrameProvider();
+
+    bool Initialize();
+
+    // FrameProvider interface
+    virtual bool IsHardware() const override
+    {
+        return false;
+    }
+
+    virtual bool AcquireFrame(Frame* frame) override;
+    virtual void ReleaseFrame(const Frame& frame) override;
+
+private:
+};
+
+//
+// IntelRealSenseFrameProvider
+//
 bool IntelRealSenseFrameProvider::Initialize()
 {
     _session = PXCSession::CreateInstance();
@@ -109,18 +132,52 @@ void IntelRealSenseFrameProvider::ReleaseFrame(const Frame& frame)
     _senseManager->ReleaseFrame();
 }
 
+//
+// SoftwareFrameProvider
+//
+bool SoftwareFrameProvider::Initialize()
+{
+    return true;
+}
+
+SoftwareFrameProvider::~SoftwareFrameProvider()
+{
+}
+
+bool SoftwareFrameProvider::AcquireFrame(Frame* frame)
+{
+    UNREFERENCED_PARAMETER(frame);
+    return false;
+}
+
+void SoftwareFrameProvider::ReleaseFrame(const Frame& frame)
+{
+    UNREFERENCED_PARAMETER(frame);
+}
+
+//
 // Public create method for frame provider
+//
 bool CreateFrameProvider(bool forceSoftware, std::shared_ptr<FrameProvider>* frameProvider)
 {
-    UNREFERENCED_PARAMETER(forceSoftware);
-
     frameProvider->reset();
 
-    // Try HW first
-    std::shared_ptr<IntelRealSenseFrameProvider> provider = std::make_shared<IntelRealSenseFrameProvider>();
+    if (!forceSoftware)
+    {
+        // Try HW first
+        std::shared_ptr<IntelRealSenseFrameProvider> provider = std::make_shared<IntelRealSenseFrameProvider>();
+        if (provider->Initialize())
+        {
+            *frameProvider = std::static_pointer_cast<FrameProvider, IntelRealSenseFrameProvider>(provider);
+            return true;
+        }
+    }
+
+    // Fall back to software provider (no camera)
+    std::shared_ptr<SoftwareFrameProvider> provider = std::make_shared<SoftwareFrameProvider>();
     if (provider->Initialize())
     {
-        *frameProvider = std::static_pointer_cast<FrameProvider, IntelRealSenseFrameProvider>(provider);
+        *frameProvider = std::static_pointer_cast<FrameProvider, SoftwareFrameProvider>(provider);
         return true;
     }
 
