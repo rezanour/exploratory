@@ -8,6 +8,7 @@
 #include <assert.h>
 
 #include <memory>
+#include <string>
 
 // Intel RealSense SDK
 #include <pxcsession.h>
