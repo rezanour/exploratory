@@ -2,6 +2,10 @@
 
 #include "FrameProvider.h"
 
+// WIC forward declarations
+struct IWICImagingFactory2;
+//struct
+
 // Implementation for Software (no camera) provider
 class SoftwareFrameProvider : public FrameProvider, NonCopyable
 {
@@ -20,7 +24,11 @@ public:
     virtual void ReleaseFrame(const Frame& frame) override;
 
 private:
+    // WIC support for image loading
+    IWICImagingFactory2* _WICFactory = nullptr;
+
     // search files in frame DB location
+    std::wstring _frameDBRoot;
     HANDLE _hFindFile = INVALID_HANDLE_VALUE;
     WIN32_FIND_DATA _findData{};
 

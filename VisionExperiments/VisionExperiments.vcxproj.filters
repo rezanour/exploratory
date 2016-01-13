@@ -19,6 +19,9 @@
     <Filter Include="Source Files\FrameProviders">
       <UniqueIdentifier>{8ed0fc44-7022-4e57-aa6b-0097d3cce94a}</UniqueIdentifier>
     </Filter>
+    <Filter Include="Resource Files\FrameDB">
+      <UniqueIdentifier>{b7b5d102-7a63-4588-a2c9-8eb9fc690de5}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="Precomp.h">
@@ -59,5 +62,10 @@
     <ClCompile Include="FrameProviders\SoftwareFrameProvider.cpp">
       <Filter>Source Files\FrameProviders</Filter>
     </ClCompile>
+  </ItemGroup>
+  <ItemGroup>
+    <Image Include="FrameDB\Frame0000_Color.png">
+      <Filter>Resource Files\FrameDB</Filter>
+    </Image>
   </ItemGroup>
 </Project>

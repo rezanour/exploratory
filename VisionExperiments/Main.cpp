@@ -71,8 +71,8 @@ int WINAPI WinMain(HINSTANCE instance, HINSTANCE, LPSTR, int)
             if (frameProvider->AcquireFrame(&frame))
             {
                 D3D11_BOX box{};
-                box.right = 640;
-                box.bottom = 480;
+                box.right = frame.Width;
+                box.bottom = frame.Height;
                 box.back = 1;
                 Context->UpdateSubresource(BackBuffer.Get(), 0, &box, frame.ColorData, frame.Width, frame.Width * frame.Height);
 
